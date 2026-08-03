@@ -1,0 +1,54 @@
+/**
+ * For more details on how to configure Wrangler, refer to:
+ * https://developers.cloudflare.com/workers/wrangler/configuration/
+ */
+{
+	"$schema": "node_modules/wrangler/config-schema.json",
+	"name": "my-telegram-bot",
+	"main": "src/index.js",
+	"compatibility_date": "2026-08-03",
+	"observability": {
+		"enabled": true
+	},
+	"upload_source_maps": true,
+	"compatibility_flags": ["nodejs_compat"],
+	"d1_databases": [
+		{
+			"binding": "DB",
+			"database_name": "movie_bot",
+			"database_id": "7de6af6b-6016-4847-a544-1c9f8cb8fbdf",
+			"remote": true
+		}
+	],
+	"kv_namespaces": [
+		{
+			"binding": "KV",
+			"id": "e486cd8dfd53426c8932cb15c6122552",
+			"remote": true
+		}
+	],
+	"queues": {
+		"producers": [
+			{
+				"binding": "QUEUE",
+				"queue": "movie-queue"
+			}
+		],
+		"consumers": [
+			{
+				"queue": "movie-queue"
+			}
+		]
+	},
+	"triggers": {
+		"crons": ["0 0 * * *"]
+	},
+	"vars": {
+		"BOT_USERNAME": "@Uwudy2636ry_bot",
+		"REQUEST_LIMIT": "5",
+		"SEARCH_COOLDOWN_SECONDS": "3",
+		"DEFAULT_LANGUAGE": "English",
+		"MAX_RESULTS": "10",
+		"SETTINGS": "{\"maintenance\":false,\"forceSubscribe\":false}"
+	}
+}
