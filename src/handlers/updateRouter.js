@@ -18,9 +18,9 @@ export class UpdateRouter {
    */
   constructor(deps) {
     this.deps = deps;
-    this.commandHandler = new CommandHandler(deps.telegramMessages, deps.searchService);
+    this.commandHandler = new CommandHandler(deps.telegramMessages, deps.telegramMedia, deps.searchService);
     this.messageHandler = new MessageHandler(deps.searchService, deps.telegramMessages, deps.telegramMedia, deps.movieFileRepo, deps.fileRepo, deps.logger);
-    this.callbackHandler = new CallbackHandler(deps.telegramCallback, deps.telegramMedia, deps.fileRepo, deps.movieFileRepo, deps.movieRepo);
+    this.callbackHandler = new CallbackHandler(deps.telegramCallback, deps.telegramMedia, deps.fileRepo, deps.movieFileRepo, deps.movieRepo, deps.userRepo, deps.config.queue);
     this.inlineHandler = new InlineHandler(deps.telegramInline, deps.searchService, deps.config.botUsername);
     this.channelPostHandler = new ChannelPostHandler(deps.movieIndexService);
     this.adminHandler = new AdminHandler(deps.telegramMessages, deps.analyticsService, deps.userRepo, deps.movieRepo, deps.fileRepo);
@@ -55,7 +55,8 @@ export class UpdateRouter {
       const command = extractCommand(text);
       if (command) {
         const args = extractCommandArgs(text);
-        if (user.isAdmin && ['/stats', '/broadcast', '/ban', '/unban'].includes(command)) {
+        const isAdminUser = user.isAdmin || (this.deps.config?.adminIds && this.deps.config.adminIds.has(String(from.id)));
+        if (isAdminUser && ['/stats', '/broadcast', '/ban', '/unban', '/movies', '/users'].includes(command)) {
           return await this.adminHandler.handleAdminCommand(chatId, command, args);
         }
         return await this.commandHandler.handleCommand(chatId, command, args, user);

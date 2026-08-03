@@ -24,30 +24,17 @@ export function buildQualityKeyboard(files, movieId) {
     return { inline_keyboard: [[{ text: 'No files available', callback_data: CALLBACK.NOOP }]] };
   }
 
-  // Group by quality, deduplicate
-  const byQuality = new Map();
-  for (const file of files) {
-    const key = file.qualityLabel ?? 'UNKNOWN';
-    if (!byQuality.has(key)) byQuality.set(key, file);
-  }
+  // One button per file — show the actual filename so users know exactly what they're downloading
+  const rows = files.map(file => {
+    const size    = file.size ? `[${file.size}] ` : '';
+    const rawName = file.fileName || file.qualityLabel || 'Unknown File';
+    // Telegram button text max is ~200 chars; cap at 80 to keep UI clean
+    const label   = `${size}${rawName}`.slice(0, 80);
+    return [{ text: label, callback_data: `${CALLBACK.GET_FILE}:${file.id}` }];
+  });
 
-  // Build one button per quality
-  const buttons = [...byQuality.entries()].map(([quality, file]) => ({
-    text:          `${file.qualityEmoji} ${quality}${file.isDualAudio ? ' 🔊' : ''}${file.isHdr ? ' HDR' : ''}`,
-    callback_data: `${CALLBACK.GET_FILE}:${file.id}`,
-  }));
-
-  // Split into rows of 2
-  const rows = [];
-  for (let i = 0; i < buttons.length; i += 2) {
-    rows.push(buttons.slice(i, i + 2));
-  }
-
-  // Info + close row
-  rows.push([
-    { text: `${EMOJI.INFO} Movie Info`,  callback_data: `${CALLBACK.MOVIE_INFO}:${movieId}` },
-    { text: `${EMOJI.CROSS} Close`,      callback_data: CALLBACK.CLOSE },
-  ]);
+  // Single close button (no Movie Info)
+  rows.push([{ text: `${EMOJI.CROSS} Close`, callback_data: CALLBACK.CLOSE }]);
 
   return { inline_keyboard: rows };
 }
@@ -84,6 +71,7 @@ export function buildMovieInfoKeyboard(movieId, trailerUrl, imdbUrl) {
 
 /**
  * Build a search results list keyboard — one button per movie result.
+ * Each button shows "[size] Title (year)" and pagination shows PAGE | 1/12 | NEXT ⇒.
  *
  * @param {import('../models/Movie.js').Movie[]} movies
  * @param {string}  query
@@ -92,22 +80,50 @@ export function buildMovieInfoKeyboard(movieId, trailerUrl, imdbUrl) {
  * @returns {object}
  */
 export function buildSearchResultsKeyboard(movies, query, page, totalPages) {
-  const rows = movies.map(movie => ([{
-    text:          `${EMOJI.MOVIE} ${movie.title}${movie.year ? ` (${movie.year})` : ''}`,
-    callback_data: `${CALLBACK.MOVIE_INFO}:${movie.id}`,
-  }]));
+  const rows = movies.map(movie => {
+    // Build label: show file size if available, then title + year
+    const sizeLabel = movie.totalSize ? `[${movie.totalSize}] ` : '';
+    const yearLabel = movie.year ? ` (${movie.year})` : '';
+    return [{
+      text:          `${sizeLabel}${movie.title}${yearLabel}`,
+      callback_data: `${CALLBACK.MOVIE_INFO}:${movie.id}`,
+    }];
+  });
 
-  // Pagination row
+  // Pagination row: PAGE | 1/12 | NEXT ⇒
   const navRow = [];
-  if (page > 1) {
-    navRow.push({ text: '◀️ Prev', callback_data: `${CALLBACK.PAGE}:${encodeQuery(query)}:${page - 1}` });
+  if (totalPages > 1) {
+    navRow.push({ text: 'PAGE', callback_data: CALLBACK.NOOP });
+    navRow.push({ text: `${page}/${totalPages}`, callback_data: CALLBACK.NOOP });
+    if (page < totalPages) {
+      navRow.push({
+        text:          'NEXT ⇒',
+        callback_data: `${CALLBACK.PAGE}:${encodeQuery(query)}:${page + 1}`,
+      });
+    } else {
+      navRow.push({ text: '—', callback_data: CALLBACK.NOOP });
+    }
+    rows.push(navRow);
+  } else if (page > 1) {
+    // Only back navigation
+    rows.push([
+      { text: '⇐ PREV', callback_data: `${CALLBACK.PAGE}:${encodeQuery(query)}:${page - 1}` },
+      { text: `${page}/${totalPages}`, callback_data: CALLBACK.NOOP },
+      { text: '—', callback_data: CALLBACK.NOOP },
+    ]);
   }
-  if (page < totalPages) {
-    navRow.push({ text: 'Next ▶️', callback_data: `${CALLBACK.PAGE}:${encodeQuery(query)}:${page + 1}` });
-  }
-  if (navRow.length) rows.push(navRow);
 
-  rows.push([{ text: `${EMOJI.CROSS} Close`, callback_data: CALLBACK.CLOSE }]);
+  // On non-first pages we also want a PREV slot in the row
+  if (page > 1 && totalPages > 1) {
+    // Replace nav row to include ⇐ PREV
+    rows[rows.length - 1] = [
+      { text: '⇐ PREV', callback_data: `${CALLBACK.PAGE}:${encodeQuery(query)}:${page - 1}` },
+      { text: `${page}/${totalPages}`, callback_data: CALLBACK.NOOP },
+      page < totalPages
+        ? { text: 'NEXT ⇒', callback_data: `${CALLBACK.PAGE}:${encodeQuery(query)}:${page + 1}` }
+        : { text: '—', callback_data: CALLBACK.NOOP },
+    ];
+  }
 
   return { inline_keyboard: rows };
 }

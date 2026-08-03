@@ -101,20 +101,19 @@ export class OmdbService {
 
       if (data.Response === 'True') {
         return {
-          title: decodeHtmlEntities(data.Title),
-          year: parseInt(data.Year) || year,
-          poster: data.Poster && data.Poster !== 'N/A' ? data.Poster : null,
-          description: decodeHtmlEntities(data.Plot),
-          genre: data.Genre,
-          imdbRating: data.imdbRating !== 'N/A' ? parseFloat(data.imdbRating) : null,
-          ratingCount: data.imdbVotes !== 'N/A' ? data.imdbVotes : null,
-          contentRating: data.Rated !== 'N/A' ? data.Rated : null,
-          duration: data.Runtime !== 'N/A' ? data.Runtime : null,
-          cast: data.Actors !== 'N/A' ? data.Actors : null,
-          directors: data.Director !== 'N/A' ? data.Director : null,
-          type: data.Type,
-          imdbId: data.imdbID,
-          imdbUrl: `https://www.imdb.com/title/${data.imdbID}/`,
+          title:         decodeHtmlEntities(data.Title),
+          year:          parseInt(data.Year) || year,
+          description:   decodeHtmlEntities(data.Plot),
+          genre:         data.Genre          !== 'N/A' ? data.Genre          : null,
+          imdbRating:    data.imdbRating      !== 'N/A' ? parseFloat(data.imdbRating) : null,
+          ratingCount:   data.imdbVotes       !== 'N/A' ? data.imdbVotes       : null,
+          contentRating: data.Rated           !== 'N/A' ? data.Rated           : null,
+          duration:      data.Runtime         !== 'N/A' ? data.Runtime         : null,
+          cast:          data.Actors          !== 'N/A' ? data.Actors          : null,
+          directors:     data.Director        !== 'N/A' ? data.Director        : null,
+          type:          data.Type,
+          imdbId:        data.imdbID,
+          imdbUrl:       `https://www.imdb.com/title/${data.imdbID}/`,
         };
       }
       return null;
@@ -143,7 +142,6 @@ export class OmdbService {
     let imdbId = null;
     let finalTitle = title;
     let finalYear = year || null;
-    let poster = null;
 
     // Step A: IMDb Suggestion API
     let sanitized = title.toLowerCase().trim().replace(/[^a-z0-9]/g, '_').replace(/_+/g, '_');
@@ -165,12 +163,9 @@ export class OmdbService {
           }
           if (!matched) matched = valid[0];
 
-          imdbId = matched.id;
+          imdbId  = matched.id;
           finalTitle = matched.l || finalTitle;
-          finalYear = matched.y ? String(matched.y) : finalYear;
-          if (matched.i?.imageUrl) {
-            poster = matched.i.imageUrl;
-          }
+          finalYear  = matched.y ? String(matched.y) : finalYear;
         }
       }
     } catch (err) {
@@ -208,10 +203,9 @@ export class OmdbService {
             const suggestions = data?.d ?? [];
             const valid = suggestions.filter(item => item.id && item.id.startsWith('tt'));
             if (valid.length > 0) {
-              imdbId = valid[0].id;
+              imdbId     = valid[0].id;
               finalTitle = valid[0].l || finalTitle;
-              finalYear = valid[0].y ? String(valid[0].y) : finalYear;
-              if (valid[0].i?.imageUrl) poster = valid[0].i.imageUrl;
+              finalYear  = valid[0].y ? String(valid[0].y) : finalYear;
             }
           }
         } catch {
@@ -223,11 +217,13 @@ export class OmdbService {
     if (!imdbId) return null;
 
     // Step D: Scrape JSON-LD Schema from IMDb Detail Page
-    let imdbRating = null;
-    let genre = null;
+    let imdbRating  = null;
+    let genre       = null;
     let description = null;
-    let cast = null;
-    let directors = null;
+    let cast        = null;
+    let directors   = null;
+    let duration    = null;
+    let contentRating = null;
 
     try {
       const detailUrl = `https://www.imdb.com/title/${imdbId}/`;
@@ -246,15 +242,26 @@ export class OmdbService {
           if (schema.description) {
             description = decodeHtmlEntities(schema.description);
           }
-          if (schema.image) {
-            poster = schema.image;
-          }
           if (schema.actor) {
-            cast = Array.isArray(schema.actor) ? schema.actor.map(a => a.name).join(', ') : schema.actor.name;
+            cast = Array.isArray(schema.actor)
+              ? schema.actor.map(a => a.name).join(', ')
+              : schema.actor.name;
           }
           if (schema.director) {
-            directors = Array.isArray(schema.director) ? schema.director.map(d => d.name).join(', ') : schema.director.name;
+            directors = Array.isArray(schema.director)
+              ? schema.director.map(d => d.name).join(', ')
+              : schema.director.name;
           }
+          if (schema.duration) {
+            // ISO 8601 duration e.g. "PT2H4M" → "124 min"
+            const durMatch = schema.duration.match(/PT(?:(\d+)H)?(?:(\d+)M)?/);
+            if (durMatch) {
+              const h = parseInt(durMatch[1] || '0');
+              const m = parseInt(durMatch[2] || '0');
+              duration = h > 0 ? `${h}h ${m}m` : `${m} min`;
+            }
+          }
+          if (schema.contentRating) contentRating = schema.contentRating;
         }
       }
     } catch {
@@ -262,20 +269,19 @@ export class OmdbService {
     }
 
     return {
-      title: decodeHtmlEntities(finalTitle),
-      year: parseInt(finalYear) || year,
-      poster,
-      description: description || 'N/A',
-      genre: genre || 'N/A',
+      title:         decodeHtmlEntities(finalTitle),
+      year:          parseInt(finalYear) || year,
+      description:   description || null,
+      genre:         genre       || null,
       imdbRating,
-      ratingCount: null,
-      contentRating: null,
-      duration: null,
+      ratingCount:   null,
+      contentRating: contentRating || null,
+      duration:      duration || null,
       cast,
       directors,
-      type: 'movie',
+      type:          'movie',
       imdbId,
-      imdbUrl: `https://www.imdb.com/title/${imdbId}/`,
+      imdbUrl:       `https://www.imdb.com/title/${imdbId}/`,
     };
   }
 

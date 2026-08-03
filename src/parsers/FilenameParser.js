@@ -130,7 +130,11 @@ export class FilenameParser {
 
   /**
    * Extract the movie title by removing all noise tokens.
-   * Title is the part of the filename before quality/year markers.
+   * Handles messy real-world filenames:
+   *   "A2M Captain America The first Avenger 2011 Tel Tam Hin Eng mkv"
+   *   "PM Captain America: The First Avenger English MKV"
+   *   "New The Toxic Avenger The Musical 2018 720p WEBRip mkv"
+   *   "Captain America The First Avenger 2011 720p@UCParadiso srt"
    *
    * @param {string} normalized
    * @param {number|null} year
@@ -140,33 +144,62 @@ export class FilenameParser {
   static _extractTitle(normalized, year, quality) {
     let title = normalized;
 
-    // Remove year and everything after
+    // ── Step 1: Strip @mentions (e.g. @UCParadiso watermarks) ─────────────
+    title = title.replace(/@\w+/g, ' ');
+
+    // ── Step 2: Normalise colons ("Title : Subtitle" → "Title Subtitle") ───
+    title = title.replace(/\s*:\s*/g, ' ');
+
+    // ── Step 3: Remove year and everything after ───────────────────────────
     if (year) {
       const idx = title.indexOf(String(year));
       if (idx > 2) title = title.slice(0, idx);
     }
 
-    // Remove quality tag and everything after
+    // ── Step 4: Remove quality tag and everything after ────────────────────
     if (quality) {
-      const idx = title.toLowerCase().indexOf(quality.toLowerCase());
-      if (idx > 2) title = title.slice(0, idx);
+      const qualIdx = title.toLowerCase().indexOf(quality.toLowerCase());
+      if (qualIdx > 2) title = title.slice(0, qualIdx);
     }
 
-    // Remove common noise tokens
+    // ── Step 5: Remove common source/codec/audio noise tokens ─────────────
     const NOISE_TOKENS = [
-      /\b(bluray|blu-ray|bdrip|webrip|web-dl|hdtv|dvdrip|hdrip|cam|hdcam)\b/gi,
-      /\b(x264|x265|hevc|h\.264|h\.265|avc|xvid)\b/gi,
-      /\b(aac|ac3|dts|dd5|dolby|atmos|flac|mp3)\b/gi,
-      /\b(esub|esubs|subtitle|multi|dual)\b/gi,
-      /\b\d+MB|\d+GB\b/gi,
+      /\b(bluray|blu[-\s]?ray|bdrip|webrip|web[-\s]?dl|hdtv|dvdrip|hdrip|cam|hdcam|remux|repack|proper|theatrical|extended|directors?\s*cut)\b/gi,
+      /\b(x264|x265|hevc|h\.264|h\.265|avc|xvid|divx|10bit|8bit|hdr10?|dolby\.?vision|dv)\b/gi,
+      /\b(aac|ac3|dts|dd5\.?1?|dolby|atmos|truehd|flac|mp3|eac3)\b/gi,
+      /\b(esub|esubs|subtitles?|multi[-\s]?audio|dual[-\s]?audio|org\.?\s*auds?|org)\b/gi,
+      /\b\d+\s*[MGK]B\b/gi,
+      // Language abbreviation clusters (e.g. "Tel Tam Hin Eng", "Hin Dub")
+      /\b(tel|tam|hin|eng|mal|kan|ben|pun|mar|urd|guj|ori|kor|jpn|chi|zho|ara|spa|fre|ger|ita|rus|por|dub)\b/gi,
     ];
-    for (const re of NOISE_TOKENS) title = title.replace(re, '');
+    for (const re of NOISE_TOKENS) title = title.replace(re, ' ');
 
-    // Remove S01E01 patterns
-    title = title.replace(/[Ss]\d+[Ee]\d+.*/g, '');
+    // ── Step 6: Remove S01E01 / S01 / E01 patterns ────────────────────────
+    title = title.replace(/\b[Ss]\d{1,2}[Ee]\d{1,3}\b.*/g, '');
+    title = title.replace(/\b[Ss]\d{1,2}\b/g, '');
 
+    // ── Step 7: Strip leading release-group prefix tokens ─────────────────
+    //   These are short (1-5 char) ALL-CAPS alphanumeric tags at the very
+    //   start of the filename: "A2M ", "PM ", "NF ", "HEVC ", etc.
+    //   We strip them iteratively until the first token looks like a real word.
+    title = title.replace(/^(\s*[A-Z][A-Z0-9]{0,4}\s+)+/g, (match) => {
+      // Keep if all stripped tokens together are a likely real title start
+      const tokens = match.trim().split(/\s+/);
+      // Accept the strip only if each token is pure upper-case/alphanumeric
+      const allNoise = tokens.every(t => /^[A-Z][A-Z0-9]{0,4}$/.test(t));
+      return allNoise ? '' : match;
+    });
+
+    // Also strip specific known prefixes that slip through (case-insensitive)
+    title = title.replace(/^\s*(?:new|hq|hd|uc\w*|hdmovies\w*)\s+/i, '');
+
+    // ── Step 8: Strip trailing punctuation / noise characters ─────────────
+    title = title.replace(/[\-_\.\[\]()]+/g, ' ');
+
+    // ── Step 9: Final normalise + title-case ──────────────────────────────
     return normalizeTitle(title)
       .split(' ')
+      .filter(w => w.length > 0)
       .map(w => w.charAt(0).toUpperCase() + w.slice(1))
       .join(' ')
       .trim() || 'Unknown';

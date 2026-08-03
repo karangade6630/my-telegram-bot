@@ -37,14 +37,29 @@ export class SearchResponse {
   get hasPrevPage() { return this.page > 1; }
 
   /**
-   * Format result count text for Telegram UI.
+   * Format the styled result header for Telegram UI.
+   * Matches the "The Results For ☞" style from the screenshot.
+   *
+   * @param {string} [requesterName] - Display name of the user who searched
    * @returns {string}
    */
-  toHeaderText() {
-    if (this.isEmpty) {
-      return `${EMOJI.SEARCH} No results found for <b>"${escapeHtml(this.query)}"</b>`;
+  toHeaderText(requesterName = null) {
+    const sec = (this.durationMs / 1000).toFixed(2);
+    const lines = [];
+
+    lines.push(`<b>Tʜᴇ Rᴇsᴜʟᴛs Fᴏʀ</b> ☞ <b>${escapeHtml(this.query)}</b>`);
+    lines.push(``);
+    if (requesterName) {
+      lines.push(`<b>Rᴇǫᴜᴇsᴛᴇᴅ Bʏ</b> ☞ <b>${escapeHtml(requesterName)}</b>`);
+      lines.push(``);
     }
-    return `${EMOJI.SEARCH} Found <b>${this.total}</b> result${this.total !== 1 ? 's' : ''} for <b>"${escapeHtml(this.query)}"</b>`;
+    lines.push(`<b>ʀᴇsᴜʟᴛ sʜᴏᴡ ɪɴ</b> ☞ <b>${sec} sᴇᴄᴏɴᴅs</b>`);
+    lines.push(``);
+    lines.push(`<b>ᴘᴏᴡᴇʀᴇᴅ ʙʏ</b> ☞ : <b>None</b>`);
+    lines.push(``);
+    lines.push(`⚠️ <b>ᴀꜰᴛᴇʀ 5 ᴍɪɴᴜᴛᴇs ᴛʜɪs ᴍᴇssᴀɢᴇ ᴡɪʟʟ ʙᴇ ᴀᴜᴛᴏᴍᴀᴛɪᴄᴀʟʟʏ ᴅᴇʟᴇᴛᴇᴅ</b>`);
+
+    return lines.join('\n');
   }
 
   /**

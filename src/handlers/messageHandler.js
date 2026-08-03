@@ -5,8 +5,9 @@
  */
 
 import { BOT_COMMANDS, EMOJI } from '../config/constants.js';
-import { normalizeMovieTitle } from '../utils/validation.js';
-import { MovieHelper } from '../helpers/movieHelper.js';
+import { normalizeMovieTitle }  from '../utils/validation.js';
+import { MovieHelper }          from '../helpers/movieHelper.js';
+import { buildSearchResultsKeyboard } from '../telegram/keyboards.js';
 
 export class MessageHandler {
   /**
@@ -18,22 +19,28 @@ export class MessageHandler {
    * @param {import('../utils/logger.js').Logger} logger
    */
   constructor(searchService, telegramMessages, telegramMedia, movieFileRepo, fileRepo, logger) {
-    this.searchService = searchService;
+    this.searchService    = searchService;
     this.telegramMessages = telegramMessages;
-    this.telegramMedia = telegramMedia;
-    this.movieFileRepo = movieFileRepo;
-    this.fileRepo = fileRepo;
-    this.logger = logger;
+    this.telegramMedia    = telegramMedia;
+    this.movieFileRepo    = movieFileRepo;
+    this.fileRepo         = fileRepo;
+    this.logger           = logger;
   }
 
   async handleMessage(update) {
     const chatId = update.message?.chat?.id;
-    const text = update.message?.text ?? '';
+    const text   = update.message?.text ?? '';
+    const user   = update.message?.from;
 
     if (!chatId || !text) return null;
 
     const normalized = normalizeMovieTitle(text);
     if (!normalized) return null;
+
+    // Requester display name
+    const requesterName = user
+      ? [user.first_name, user.last_name].filter(Boolean).join(' ').trim() || user.username || 'User'
+      : 'User';
 
     // Execute search via SearchService
     const searchRes = await this.searchService.search(normalized);
@@ -41,7 +48,15 @@ export class MessageHandler {
     if (searchRes.isEmpty) {
       await this.telegramMessages.sendMessage(
         chatId,
-        `🔍 No movie match found for <b>"${normalized}"</b>.\nTry a different spelling or search keyword.`
+        [
+          `<b>Tʜᴇ Rᴇsᴜʟᴛs Fᴏʀ</b> ☞ <b>${escapeHtml(normalized)}</b>`,
+          ``,
+          `<b>Rᴇǫᴜᴇsᴛᴇᴅ Bʏ</b> ☞ <b>${escapeHtml(requesterName)}</b>`,
+          ``,
+          `🚫 <b>Sᴏʀʀʏ, ɴᴏ ʀᴇsᴜʟᴛs ꜰᴏᴜɴᴅ</b>`,
+          ``,
+          `⚠️ <b>ᴀꜰᴛᴇʀ 5 ᴍɪɴᴜᴛᴇs ᴛʜɪs ᴍᴇssᴀɢᴇ ᴡɪʟʟ ʙᴇ ᴀᴜᴛᴏᴍᴀᴛɪᴄᴀʟʟʏ ᴅᴇʟᴇᴛᴇᴅ</b>`,
+        ].join('\n')
       );
       return null;
     }
@@ -53,31 +68,28 @@ export class MessageHandler {
 
       const { text: cardText, keyboard } = MovieHelper.formatMovieSearchResult(movie, files);
 
-      if (movie.posterUrl) {
-        await this.telegramMedia.sendPhoto(chatId, movie.posterUrl, cardText, { reply_markup: keyboard });
-      } else {
-        await this.telegramMessages.sendMessage(chatId, cardText, { reply_markup: keyboard });
-      }
+      await this.telegramMessages.sendMessage(chatId, cardText, { reply_markup: keyboard });
       return null;
     }
 
-    // Multiple result matches — show search results selection keyboard
-    const lines = [searchRes.toHeaderText(), ''];
-    searchRes.movies.forEach((movie, idx) => {
-      lines.push(`${idx + 1}. <b>${movie.title}</b> ${movie.year ? `(${movie.year})` : ''} ${movie.imdbRating ? `⭐ ${movie.imdbRating}` : ''}`);
-    });
-    lines.push('\n<i>Select a movie from the buttons below:</i>');
+    // Multiple results — show styled header + file list keyboard
+    const header   = searchRes.toHeaderText(requesterName);
+    const keyboard = buildSearchResultsKeyboard(
+      searchRes.movies,
+      normalized,
+      searchRes.page,
+      searchRes.totalPages
+    );
 
-    const keyboard = {
-      inline_keyboard: searchRes.movies.map(movie => ([
-        {
-          text: `🎬 ${movie.title} ${movie.year ? `(${movie.year})` : ''}`,
-          callback_data: `mi:${movie.id}`
-        }
-      ]))
-    };
-
-    await this.telegramMessages.sendMessage(chatId, lines.join('\n'), { reply_markup: keyboard });
+    await this.telegramMessages.sendMessage(chatId, header, { reply_markup: keyboard });
     return null;
   }
+}
+
+function escapeHtml(str) {
+  if (!str) return '';
+  return String(str)
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;');
 }

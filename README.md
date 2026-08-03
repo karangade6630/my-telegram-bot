@@ -7,14 +7,15 @@ An enterprise-level, production-ready, fully serverless Telegram Movie AutoFilte
 ## 📌 Table of Contents
 1. [Overview & Architecture](#-overview--architecture)
 2. [Complete Feature List](#-complete-feature-list)
-3. [Technology Stack](#-technology-stack)
-4. [Project Directory Breakdown](#-project-directory-breakdown)
-5. [Database Schema (D1 SQLite)](#-database-schema-d1-sqlite)
-6. [Multi-Stage Search Engine](#-multi-stage-search-engine)
-7. [OMDB & IMDb Multi-Stage Metadata Pipeline](#-omdb--imdb-multi-stage-metadata-pipeline)
-8. [Step-by-Step Installation & Setup Guide](#-step-by-step-installation--setup-guide)
-9. [How to Use (User & Admin Guide)](#-how-to-use-user--admin-guide)
-10. [Security & Performance Optimizations](#-security--performance-optimizations)
+3. [Bot Commands Reference](#-bot-commands-reference)
+4. [Technology Stack](#-technology-stack)
+5. [Project Directory Breakdown](#-project-directory-breakdown)
+6. [Database Schema (D1 SQLite)](#-database-schema-d1-sqlite)
+7. [Multi-Stage Search Engine](#-multi-stage-search-engine)
+8. [OMDB & IMDb Multi-Stage Metadata Pipeline](#-omdb--imdb-multi-stage-metadata-pipeline)
+9. [Step-by-Step Installation & Setup Guide](#-step-by-step-installation--setup-guide)
+10. [How to Use (User & Admin Guide)](#-how-to-use-user--admin-guide)
+11. [Security & Performance Optimizations](#-security--performance-optimizations)
 
 ---
 
@@ -32,17 +33,17 @@ This bot is designed to handle over **100,000+ active users** using a modular, s
 ## 🚀 Complete Feature List
 
 ### 👤 User Features
-- **Instant AutoFilter Movie Search**: Users send a movie or series title (e.g. `Avengers Endgame`). The bot returns movie details (poster, IMDb rating, cast, genre, language) with interactive quality buttons (`480p`, `720p`, `1080p`, `4K`).
-- **One-Click File Delivery**: Clicking any quality button instantly delivers the Telegram file via `file_id`.
+- **Instant AutoFilter Movie Search**: Users send a movie or series title (e.g. `Avengers Endgame`). The bot returns movie details (IMDb rating, cast, genre, language) with interactive file buttons.
+- **One-Click File Delivery & Auto-Delete**: Clicking any quality/filename button instantly delivers the Telegram file via `file_id` and schedules an automatic message deletion after 5 minutes.
 - **Inline Mode (`@BotUsername Movie Name`)**: Search movies directly from any Telegram chat or group without adding the bot.
-- **Paginated Results**: Search results with more than 5 matches feature inline `◀️ Prev` and `Next ▶️` pagination controls.
+- **Paginated Results**: Search results with more than 5 matches feature inline `⇐ PREV | 1/12 | NEXT ⇒` pagination controls.
 - **Multi-Category Support**: Automatically parses and tags Movies, TV Series, Anime, and Web Series.
 - **User Engagement**: Support for Watchlists, Favorites, and Search History tracking.
 
 ### 🎥 Channel Auto-Indexing Engine
 - **Automatic Channel Post Interception**: Add the bot as an administrator in your private file storage channels.
 - **Smart Metadata Extraction**: Automatically parses filenames and captions for:
-  - Movie / Series Title
+  - Movie / Series Title (removes release tags like `A2M`, `PM`, `@channel`)
   - Release Year
   - Quality (`480p`, `720p`, `1080p`, `2160p`, `CAM`)
   - Codec (`x264`, `x265`, `HEVC`, `AV1`)
@@ -53,9 +54,27 @@ This bot is designed to handle over **100,000+ active users** using a modular, s
 
 ### 🛡️ Admin Panel & Management
 - **Dashboard Metrics (`/stats`)**: Real-time stats on total users, total movies, indexed files, and database metrics.
-- **Mass User Broadcast**: Queue-backed chunked mass messaging that safely broadcasts announcements to thousands of active users without hitting Telegram rate limits.
-- **User Management (`/ban`, `/unban`)**: Ban abusive users from interacting with the bot.
-- **Channel Management**: Manage index source channels and force-subscribe requirements.
+- **Mass User Broadcast (`/broadcast`)**: Queue-backed chunked mass messaging that safely broadcasts announcements to thousands of active users without hitting Telegram rate limits.
+- **User Management (`/ban`, `/unban`, `/users`)**: View user metrics and ban/unban abusive users from interacting with the bot.
+- **Movie Catalog Overview (`/movies`)**: View total count and recently indexed movies in D1.
+
+---
+
+## 💻 Bot Commands Reference
+
+Here is a full breakdown of all supported Telegram commands, their parameters, required permissions, and functionality:
+
+| Command | Category | Parameters | Permissions | Description & Functionality |
+| :--- | :--- | :--- | :--- | :--- |
+| `/start` | Public | None | All Users | Displays the welcome banner image (Movie Time neon graphic), bot introduction, and quick search instructions. |
+| `/help` | Public | None | All Users | Displays detailed user guide, tips for finding files, and search formatting examples. |
+| `/about` | Public | None | All Users | Shows details about the bot platform, technologies used, version info, and capabilities. |
+| `/stats` | Admin | None | Admins Only | Displays real-time database metrics including total users, total indexed movies, total files, and interactive dashboard keyboard. |
+| `/users` | Admin | None | Admins Only | Displays total registered user counts and active user statistics. |
+| `/movies` | Admin | None | Admins Only | Displays total movie count and lists the 5 most recently indexed movies in the database. |
+| `/broadcast` | Admin | `<message_text>` | Admins Only | Initiates a queue-backed mass broadcast announcement to all non-banned users in the system. |
+| `/ban` | Admin | `<user_id> [reason]` | Admins Only | Blacklists a user by their Telegram User ID, preventing them from running searches or receiving files. |
+| `/unban` | Admin | `<user_id>` | Admins Only | Removes a user from the blacklist and restores their bot access. |
 
 ---
 
@@ -66,9 +85,9 @@ This bot is designed to handle over **100,000+ active users** using a modular, s
 | **Runtime** | Cloudflare Workers | Serverless JavaScript (ES Modules, `nodejs_compat`) |
 | **Database** | Cloudflare D1 | Serverless SQLite database with prepared statements |
 | **Cache** | Cloudflare KV | Low-latency key-value store for search results & IMDb cache |
-| **Queue** | Cloudflare Queues | Async background queue for broadcasting & background analytics |
+| **Queue** | Cloudflare Queues | Async background queue for broadcasting & message auto-deletion |
 | **Scheduler** | Cron Triggers | Daily scheduled task for log cleanup and analytics rotation |
-| **API Integration** | OMDB & IMDb | Multi-stage metadata pipeline for posters, rating & cast |
+| **API Integration** | OMDB & IMDb | Multi-stage metadata pipeline for rating, genre, cast & plot |
 
 ---
 
@@ -114,7 +133,7 @@ my-telegram-bot/
 The D1 database consists of **24 normalized tables** designed for high throughput:
 
 - `users`: User profiles, Telegram user IDs, search counts, admin/banned/premium flags.
-- `movies`: Canonical movie records (`slug`, `title`, `year`, `genre`, `imdb_id`, `imdb_rating`, `poster_url`, `popularity_score`).
+- `movies`: Canonical movie records (`slug`, `title`, `year`, `genre`, `imdb_id`, `imdb_rating`, `popularity_score`).
 - `files`: Indexed Telegram files storing `telegram_file_id`, `unique_id`, `quality`, `size`, `codec`, `language`, `channel_id`, `message_id`.
 - `movie_files`: Many-to-many junction linking movies to multiple file qualities.
 - `channels`: Tracked Telegram channels for auto-indexing.
@@ -143,8 +162,8 @@ When indexing new files or searching movies:
 
 1. **OMDB API Query**: Queries OMDB by title and optional year.
 2. **Title Variant Generator**: Generates clean variations (stripping articles, noise words, punctuation).
-3. **IMDb Suggestion API Fallback**: Queries IMDb's direct suggestion API (`v3.sg.media-imdb.com/suggestion`) to extract the exact `tt` IMDb ID and poster image URL.
-4. **Poster Link Storage**: High-resolution poster image URLs are stored directly in D1's `poster_url` column and cached in Cloudflare KV.
+3. **IMDb Suggestion API Fallback**: Queries IMDb's direct suggestion API (`v3.sg.media-imdb.com/suggestion`) to extract the exact `tt` IMDb ID.
+4. **JSON-LD Schema Scraping**: Scrapes structured metadata directly from IMDb detail pages for rating, genre, runtime, cast, and directors.
 
 ---
 
@@ -193,7 +212,6 @@ npx wrangler secret put BOT_TOKEN
 npx wrangler secret put OMDB_API_KEY
 npx wrangler secret put ADMIN_IDS
 ```
-*(Optionally set `WEBHOOK_SECRET` for header verification)*.
 
 ### 5. Deploy to Cloudflare Workers
 ```bash
@@ -221,23 +239,25 @@ Invoke-RestMethod -Uri "https://api.telegram.org/bot<YOUR_BOT_TOKEN>/setWebhook"
    ```text
    Avatar The Way of Water
    ```
-4. The bot will send a card containing the Movie Title, IMDb Rating, Cast, Poster, and Quality Buttons (`480p`, `720p`, `1080p`, `4K`).
-5. Click any quality button to instantly receive the video file.
+4. The bot will send a card containing the search header, results count, requester name, and file list buttons.
+5. Click any file button to instantly receive the video file.
 
 ### 2. Auto-Indexing Channel Files (Admins)
 1. Create a private Telegram channel for storage.
 2. Add your bot to the channel as an **Administrator** with permission to read messages.
 3. Upload or forward video files/documents into the channel with standard naming formats:
    ```text
-   Inception.2010.1080p.BluRay.x265.HEVC.Dual.Audio.mkv
+   A2M Captain America The first Avenger 2011 Tel Tam Hin Eng mkv
    ```
-4. The bot will receive a `channel_post` update, extract metadata, create database entries in D1, and link the file's `file_id` automatically.
+4. The bot will receive a `channel_post` update, extract metadata, clean noise tags, create database entries in D1, and link the file's `file_id` automatically.
 
 ### 3. Admin Dashboard & Operations
 - **/stats**: Displays real-time database metrics (total users, total movies indexed, total files).
 - **/broadcast `<message>`**: Triggers a queue-backed announcement broadcast to all users.
 - **/ban `<user_id>`**: Bans a user from searching or receiving files.
 - **/unban `<user_id>`**: Unbans a user.
+- **/movies**: Displays total indexed movies and top recent entries.
+- **/users**: Displays user statistics.
 
 ---
 

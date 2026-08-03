@@ -111,6 +111,15 @@ export class FileRepository extends BaseRepository {
   }
 
   /**
+   * Get total storage size of all indexed files in bytes.
+   * @returns {Promise<number>}
+   */
+  async getTotalSizeBytes() {
+    const row = await this.first('SELECT SUM(size_bytes) as total FROM files');
+    return row?.total ?? 0;
+  }
+
+  /**
    * Count files indexed from a specific channel.
    * @param {string} channelId
    * @returns {Promise<number>}
