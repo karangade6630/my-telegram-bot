@@ -20,23 +20,23 @@ import { CALLBACK, EMOJI, PAGINATION } from '../config/constants.js';
  * @returns {object} Telegram InlineKeyboardMarkup
  */
 export function buildQualityKeyboard(files, movieId) {
-  if (!files || files.length === 0) {
-    return { inline_keyboard: [[{ text: 'No files available', callback_data: CALLBACK.NOOP }]] };
-  }
+	if (!files || files.length === 0) {
+		return { inline_keyboard: [[{ text: 'No files available', callback_data: CALLBACK.NOOP }]] };
+	}
 
-  // One button per file — show the actual filename so users know exactly what they're downloading
-  const rows = files.map(file => {
-    const size    = file.size ? `[${file.size}] ` : '';
-    const rawName = file.fileName || file.qualityLabel || 'Unknown File';
-    // Telegram button text max is ~200 chars; cap at 80 to keep UI clean
-    const label   = `${size}${rawName}`.slice(0, 80);
-    return [{ text: label, callback_data: `${CALLBACK.GET_FILE}:${file.id}` }];
-  });
+	// One button per file — show the actual filename so users know exactly what they're downloading
+	const rows = files.map((file) => {
+		const size = file.size ? `[${file.size}] ` : '';
+		const rawName = file.fileName || file.qualityLabel || 'Unknown File';
+		// Telegram button text max is ~200 chars; cap at 80 to keep UI clean
+		const label = `${size}${rawName}`.slice(0, 80);
+		return [{ text: label, callback_data: `${CALLBACK.GET_FILE}:${file.id}` }];
+	});
 
-  // Single close button (no Movie Info)
-  rows.push([{ text: `${EMOJI.CROSS} Close`, callback_data: CALLBACK.CLOSE }]);
+	// Single close button (no Movie Info)
+	rows.push([{ text: `${EMOJI.CROSS} Close`, callback_data: CALLBACK.CLOSE }]);
 
-  return { inline_keyboard: rows };
+	return { inline_keyboard: rows };
 }
 
 /**
@@ -48,21 +48,21 @@ export function buildQualityKeyboard(files, movieId) {
  * @returns {object}
  */
 export function buildMovieInfoKeyboard(movieId, trailerUrl, imdbUrl) {
-  const rows = [];
-  const row1 = [];
-  if (trailerUrl) row1.push({ text: `${EMOJI.TRAILER} Trailer`, url: trailerUrl });
-  if (imdbUrl)    row1.push({ text: '⭐ IMDb', url: imdbUrl });
-  if (row1.length) rows.push(row1);
+	const rows = [];
+	const row1 = [];
+	if (trailerUrl) row1.push({ text: `${EMOJI.TRAILER} Trailer`, url: trailerUrl });
+	if (imdbUrl) row1.push({ text: '⭐ IMDb', url: imdbUrl });
+	if (row1.length) rows.push(row1);
 
-  rows.push([
-    { text: `${EMOJI.DOWNLOAD} Get Files`,  callback_data: `${CALLBACK.GET_QUALITY}:${movieId}` },
-    { text: `${EMOJI.BOOKMARK} Watchlist`,  callback_data: `${CALLBACK.WATCHLIST_ADD}:${movieId}` },
-    { text: `${EMOJI.HEART} Favorite`,      callback_data: `${CALLBACK.FAVORITE_ADD}:${movieId}` },
-  ]);
+	rows.push([
+		{ text: `${EMOJI.DOWNLOAD} Get Files`, callback_data: `${CALLBACK.GET_QUALITY}:${movieId}` },
+		{ text: `${EMOJI.BOOKMARK} Watchlist`, callback_data: `${CALLBACK.WATCHLIST_ADD}:${movieId}` },
+		{ text: `${EMOJI.HEART} Favorite`, callback_data: `${CALLBACK.FAVORITE_ADD}:${movieId}` },
+	]);
 
-  rows.push([{ text: `${EMOJI.CROSS} Close`, callback_data: CALLBACK.CLOSE }]);
+	rows.push([{ text: `${EMOJI.CROSS} Close`, callback_data: CALLBACK.CLOSE }]);
 
-  return { inline_keyboard: rows };
+	return { inline_keyboard: rows };
 }
 
 // ─────────────────────────────────────────────────────────────
@@ -80,52 +80,54 @@ export function buildMovieInfoKeyboard(movieId, trailerUrl, imdbUrl) {
  * @returns {object}
  */
 export function buildSearchResultsKeyboard(movies, query, page, totalPages) {
-  const rows = movies.map(movie => {
-    // Build label: show file size if available, then title + year
-    const sizeLabel = movie.totalSize ? `[${movie.totalSize}] ` : '';
-    const yearLabel = movie.year ? ` (${movie.year})` : '';
-    return [{
-      text:          `${sizeLabel}${movie.title}${yearLabel}`,
-      callback_data: `${CALLBACK.MOVIE_INFO}:${movie.id}`,
-    }];
-  });
+	const rows = movies.map((movie) => {
+		// Build label: show file size if available, then title + year
+		const sizeLabel = movie.totalSize ? `[${movie.totalSize}] ` : '';
+		const yearLabel = movie.year ? ` (${movie.year})` : '';
+		return [
+			{
+				text: `${sizeLabel}${movie.title}${yearLabel}`,
+				callback_data: `${CALLBACK.MOVIE_INFO}:${movie.id}`,
+			},
+		];
+	});
 
-  // Pagination row: PAGE | 1/12 | NEXT ⇒
-  const navRow = [];
-  if (totalPages > 1) {
-    navRow.push({ text: 'PAGE', callback_data: CALLBACK.NOOP });
-    navRow.push({ text: `${page}/${totalPages}`, callback_data: CALLBACK.NOOP });
-    if (page < totalPages) {
-      navRow.push({
-        text:          'NEXT ⇒',
-        callback_data: `${CALLBACK.PAGE}:${encodeQuery(query)}:${page + 1}`,
-      });
-    } else {
-      navRow.push({ text: '—', callback_data: CALLBACK.NOOP });
-    }
-    rows.push(navRow);
-  } else if (page > 1) {
-    // Only back navigation
-    rows.push([
-      { text: '⇐ PREV', callback_data: `${CALLBACK.PAGE}:${encodeQuery(query)}:${page - 1}` },
-      { text: `${page}/${totalPages}`, callback_data: CALLBACK.NOOP },
-      { text: '—', callback_data: CALLBACK.NOOP },
-    ]);
-  }
+	// Pagination row: PAGE | 1/12 | NEXT ⇒
+	const navRow = [];
+	if (totalPages > 1) {
+		navRow.push({ text: 'PAGE', callback_data: CALLBACK.NOOP });
+		navRow.push({ text: `${page}/${totalPages}`, callback_data: CALLBACK.NOOP });
+		if (page < totalPages) {
+			navRow.push({
+				text: 'NEXT ⇒',
+				callback_data: `${CALLBACK.PAGE}:${encodeQuery(query)}:${page + 1}`,
+			});
+		} else {
+			navRow.push({ text: '—', callback_data: CALLBACK.NOOP });
+		}
+		rows.push(navRow);
+	} else if (page > 1) {
+		// Only back navigation
+		rows.push([
+			{ text: '⇐ PREV', callback_data: `${CALLBACK.PAGE}:${encodeQuery(query)}:${page - 1}` },
+			{ text: `${page}/${totalPages}`, callback_data: CALLBACK.NOOP },
+			{ text: '—', callback_data: CALLBACK.NOOP },
+		]);
+	}
 
-  // On non-first pages we also want a PREV slot in the row
-  if (page > 1 && totalPages > 1) {
-    // Replace nav row to include ⇐ PREV
-    rows[rows.length - 1] = [
-      { text: '⇐ PREV', callback_data: `${CALLBACK.PAGE}:${encodeQuery(query)}:${page - 1}` },
-      { text: `${page}/${totalPages}`, callback_data: CALLBACK.NOOP },
-      page < totalPages
-        ? { text: 'NEXT ⇒', callback_data: `${CALLBACK.PAGE}:${encodeQuery(query)}:${page + 1}` }
-        : { text: '—', callback_data: CALLBACK.NOOP },
-    ];
-  }
+	// On non-first pages we also want a PREV slot in the row
+	if (page > 1 && totalPages > 1) {
+		// Replace nav row to include ⇐ PREV
+		rows[rows.length - 1] = [
+			{ text: '⇐ PREV', callback_data: `${CALLBACK.PAGE}:${encodeQuery(query)}:${page - 1}` },
+			{ text: `${page}/${totalPages}`, callback_data: CALLBACK.NOOP },
+			page < totalPages
+				? { text: 'NEXT ⇒', callback_data: `${CALLBACK.PAGE}:${encodeQuery(query)}:${page + 1}` }
+				: { text: '—', callback_data: CALLBACK.NOOP },
+		];
+	}
 
-  return { inline_keyboard: rows };
+	return { inline_keyboard: rows };
 }
 
 // ─────────────────────────────────────────────────────────────
@@ -137,26 +139,26 @@ export function buildSearchResultsKeyboard(movies, query, page, totalPages) {
  * @returns {object}
  */
 export function buildAdminKeyboard() {
-  return {
-    inline_keyboard: [
-      [
-        { text: '📊 Stats',       callback_data: 'admin:stats' },
-        { text: '👥 Users',       callback_data: 'admin:users' },
-      ],
-      [
-        { text: '🎬 Movies',      callback_data: 'admin:movies' },
-        { text: '📢 Broadcast',   callback_data: 'admin:broadcast' },
-      ],
-      [
-        { text: '⚙️ Settings',    callback_data: 'admin:settings' },
-        { text: '🔧 Channels',    callback_data: 'admin:channels' },
-      ],
-      [
-        { text: '📋 Logs',        callback_data: 'admin:logs' },
-        { text: `${EMOJI.CROSS} Close`, callback_data: CALLBACK.CLOSE },
-      ],
-    ],
-  };
+	return {
+		inline_keyboard: [
+			[
+				{ text: '📊 Stats', callback_data: 'admin:stats' },
+				{ text: '👥 Users', callback_data: 'admin:users' },
+			],
+			[
+				{ text: '🎬 Movies', callback_data: 'admin:movies' },
+				{ text: '📢 Broadcast', callback_data: 'admin:broadcast' },
+			],
+			[
+				{ text: '⚙️ Settings', callback_data: 'admin:settings' },
+				{ text: '🔧 Channels', callback_data: 'admin:channels' },
+			],
+			[
+				{ text: '📋 Logs', callback_data: 'admin:logs' },
+				{ text: `${EMOJI.CROSS} Close`, callback_data: CALLBACK.CLOSE },
+			],
+		],
+	};
 }
 
 /**
@@ -165,12 +167,14 @@ export function buildAdminKeyboard() {
  * @returns {object}
  */
 export function buildConfirmKeyboard(action) {
-  return {
-    inline_keyboard: [[
-      { text: '✅ Yes', callback_data: `${CALLBACK.CONFIRM_YES}:${action}` },
-      { text: '❌ No',  callback_data: CALLBACK.CONFIRM_NO },
-    ]],
-  };
+	return {
+		inline_keyboard: [
+			[
+				{ text: '✅ Yes', callback_data: `${CALLBACK.CONFIRM_YES}:${action}` },
+				{ text: '❌ No', callback_data: CALLBACK.CONFIRM_NO },
+			],
+		],
+	};
 }
 
 // ─────────────────────────────────────────────────────────────
@@ -184,13 +188,11 @@ export function buildConfirmKeyboard(action) {
  * @returns {object}
  */
 export function buildForceSubKeyboard(channels) {
-  const rows = channels
-    .filter(c => c.channel_url)
-    .map(c => ([{ text: `📢 Join ${c.title ?? 'Channel'}`, url: c.channel_url }]));
+	const rows = channels.filter((c) => c.channel_url).map((c) => [{ text: `📢 Join ${c.title ?? 'Channel'}`, url: c.channel_url }]);
 
-  rows.push([{ text: '✅ I Joined — Try Again', callback_data: 'forcesub:check' }]);
+	rows.push([{ text: '✅ I Joined — Try Again', callback_data: 'forcesub:check' }]);
 
-  return { inline_keyboard: rows };
+	return { inline_keyboard: rows };
 }
 
 // ─────────────────────────────────────────────────────────────
@@ -205,14 +207,16 @@ export function buildForceSubKeyboard(channels) {
  * @returns {object}
  */
 export function buildInlineKeyboard(movieId, botUsername) {
-  return {
-    inline_keyboard: [[
-      {
-        text: `${EMOJI.ROBOT} Open Bot`,
-        url:  `https://t.me/${botUsername}?start=movie_${movieId}`,
-      },
-    ]],
-  };
+	return {
+		inline_keyboard: [
+			[
+				{
+					text: `${EMOJI.ROBOT} Open Bot`,
+					url: `https://t.me/${botUsername}?start=movie_${movieId}`,
+				},
+			],
+		],
+	};
 }
 
 // ─────────────────────────────────────────────────────────────
@@ -225,12 +229,14 @@ export function buildInlineKeyboard(movieId, botUsername) {
  * @returns {object}
  */
 export function buildWatchlistItemKeyboard(movieId) {
-  return {
-    inline_keyboard: [[
-      { text: `${EMOJI.DOWNLOAD} Get Files`, callback_data: `${CALLBACK.GET_QUALITY}:${movieId}` },
-      { text: '🗑 Remove',                   callback_data: `${CALLBACK.WATCHLIST_RM}:${movieId}` },
-    ]],
-  };
+	return {
+		inline_keyboard: [
+			[
+				{ text: `${EMOJI.DOWNLOAD} Get Files`, callback_data: `${CALLBACK.GET_QUALITY}:${movieId}` },
+				{ text: '🗑 Remove', callback_data: `${CALLBACK.WATCHLIST_RM}:${movieId}` },
+			],
+		],
+	};
 }
 
 // ─────────────────────────────────────────────────────────────
@@ -245,5 +251,8 @@ export function buildWatchlistItemKeyboard(movieId) {
  * @returns {string}
  */
 function encodeQuery(query) {
-  return encodeURIComponent(query).slice(0, 40);
+	const normalized = String(query ?? '').trim();
+	if (!normalized) return '';
+	const encoded = encodeURIComponent(normalized);
+	return encoded.length > 56 ? encoded.slice(0, 56) : encoded;
 }

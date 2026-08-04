@@ -19,6 +19,7 @@ export const BOT_COMMANDS = Object.freeze({
 	SETTINGS: '/settings',
 	STATS: '/stats',
 	BROADCAST: '/broadcast',
+	RESETDB: '/resetdb',
 	BAN: '/ban',
 	UNBAN: '/unban',
 	ADDADMIN: '/addadmin',
