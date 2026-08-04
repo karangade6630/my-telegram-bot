@@ -248,11 +248,11 @@ export class CallbackHandler {
 			return;
 		}
 
-		// ── Pagination Callback (pg:query:page) ──────────────────────
+		// ── Pagination Callback (pg:page) ──────────────────────
 		if (action === CALLBACK.PAGE) {
 			const parts = data.split(':');
-			const queryStr = decodeURIComponent(parts[1] || '');
-			const targetPage = parseInt(parts[2]) || 1;
+			const targetPage = parseInt(parts[1]) || 1;
+			const queryStr = extractQueryFromMessage(callbackQuery.message?.text || '');
 
 			if (!queryStr) {
 				await this.telegramCallback.answer(queryId);
@@ -338,4 +338,42 @@ export class CallbackHandler {
 function escapeHtml(str) {
 	if (!str) return '';
 	return String(str).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+}
+
+export function extractQueryFromMessage(text) {
+	if (!text) return '';
+
+	const raw = String(text).replace(/\r\n/g, '\n').trim();
+	const lines = raw.split('\n');
+
+	for (const line of lines) {
+		const trimmed = line.trim();
+		if (!trimmed) continue;
+
+		const taggedMatch = trimmed.match(/☞\s*<b>(.*?)<\/b>/i);
+		if (taggedMatch?.[1]) {
+			return decodeHtmlEntities(taggedMatch[1]).trim();
+		}
+
+		const fallbackMatch = trimmed.match(/☞\s*(.+)$/i);
+		if (fallbackMatch?.[1]) {
+			return decodeHtmlEntities(fallbackMatch[1]).trim();
+		}
+	}
+
+	const broadMatch = raw.match(/(?:the\s+results\s+for|tʜᴇ\s+rᴇsᴜʟᴛs\s+fᴏʀ)[\s\S]*?☞\s*<b>(.*?)<\/b>/i);
+	if (broadMatch?.[1]) {
+		return decodeHtmlEntities(broadMatch[1]).trim();
+	}
+
+	return '';
+}
+
+function decodeHtmlEntities(str) {
+	return String(str)
+		.replace(/&amp;/g, '&')
+		.replace(/&lt;/g, '<')
+		.replace(/&gt;/g, '>')
+		.replace(/&#39;/g, "'")
+		.replace(/&quot;/g, '"');
 }

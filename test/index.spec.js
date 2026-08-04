@@ -2,6 +2,7 @@ import { env, createExecutionContext, waitOnExecutionContext, SELF } from 'cloud
 import { describe, it, expect, vi } from 'vitest';
 import worker from '../src';
 import { SearchService } from '../src/services/searchService.js';
+import { extractQueryFromMessage } from '../src/handlers/callbackHandler.js';
 
 describe('Movie AutoFilter worker', () => {
 	it('responds with the bot health status on GET / (unit style)', async () => {
@@ -32,5 +33,13 @@ describe('SearchService pagination', () => {
 		expect(movieRepo.searchExact).toHaveBeenCalledWith('test movie', expect.objectContaining({ limit: 2, offset: 2 }));
 		expect(result.page).toBe(2);
 		expect(result.totalPages).toBe(3);
+	});
+});
+
+describe('Callback pagination query parsing', () => {
+	it('extracts the original search query from the styled result header', () => {
+		const text = `<b>Tʜᴇ Rᴇsᴜʟᴛs Fᴏʀ</b> ☞ <b>Matrix &amp; Friends</b>\n\n<b>Rᴇǫᴜᴇsᴛᴇᴅ Bʏ</b> ☞ <b>Tester</b>`;
+
+		expect(extractQueryFromMessage(text)).toBe('Matrix & Friends');
 	});
 });

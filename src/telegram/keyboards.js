@@ -100,7 +100,7 @@ export function buildSearchResultsKeyboard(movies, query, page, totalPages) {
 		if (page < totalPages) {
 			navRow.push({
 				text: 'NEXT ⇒',
-				callback_data: `${CALLBACK.PAGE}:${encodeQuery(query)}:${page + 1}`,
+				callback_data: `${CALLBACK.PAGE}:${page + 1}`,
 			});
 		} else {
 			navRow.push({ text: '—', callback_data: CALLBACK.NOOP });
@@ -109,7 +109,7 @@ export function buildSearchResultsKeyboard(movies, query, page, totalPages) {
 	} else if (page > 1) {
 		// Only back navigation
 		rows.push([
-			{ text: '⇐ PREV', callback_data: `${CALLBACK.PAGE}:${encodeQuery(query)}:${page - 1}` },
+			{ text: '⇐ PREV', callback_data: `${CALLBACK.PAGE}:${page - 1}` },
 			{ text: `${page}/${totalPages}`, callback_data: CALLBACK.NOOP },
 			{ text: '—', callback_data: CALLBACK.NOOP },
 		]);
@@ -119,11 +119,9 @@ export function buildSearchResultsKeyboard(movies, query, page, totalPages) {
 	if (page > 1 && totalPages > 1) {
 		// Replace nav row to include ⇐ PREV
 		rows[rows.length - 1] = [
-			{ text: '⇐ PREV', callback_data: `${CALLBACK.PAGE}:${encodeQuery(query)}:${page - 1}` },
+			{ text: '⇐ PREV', callback_data: `${CALLBACK.PAGE}:${page - 1}` },
 			{ text: `${page}/${totalPages}`, callback_data: CALLBACK.NOOP },
-			page < totalPages
-				? { text: 'NEXT ⇒', callback_data: `${CALLBACK.PAGE}:${encodeQuery(query)}:${page + 1}` }
-				: { text: '—', callback_data: CALLBACK.NOOP },
+			page < totalPages ? { text: 'NEXT ⇒', callback_data: `${CALLBACK.PAGE}:${page + 1}` } : { text: '—', callback_data: CALLBACK.NOOP },
 		];
 	}
 
