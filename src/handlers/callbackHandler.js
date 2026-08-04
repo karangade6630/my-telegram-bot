@@ -7,6 +7,7 @@
  */
 
 import { CALLBACK, AUTO_DELETE_SECONDS } from '../config/constants.js';
+import { buildQualityKeyboard } from '../telegram/keyboards.js';
 
 const AUTO_DELETE_MS = (AUTO_DELETE_SECONDS ?? 300) * 1000;
 
@@ -18,8 +19,9 @@ export class CallbackHandler {
    * @param {import('../repositories/MovieFileRepository.js').MovieFileRepository} movieFileRepo
    * @param {import('../repositories/MovieRepository.js').MovieRepository} movieRepo
    * @param {object|null} queue  - Cloudflare Queue binding (env.QUEUE)
+   * @param {import('../services/searchService.js').SearchService} [searchService]
    */
-  constructor(telegramCallback, telegramMedia, fileRepo, movieFileRepo, movieRepo, userRepo, queue = null) {
+  constructor(telegramCallback, telegramMedia, fileRepo, movieFileRepo, movieRepo, userRepo, queue = null, searchService = null) {
     this.telegramCallback = telegramCallback;
     this.telegramMedia    = telegramMedia;
     this.fileRepo         = fileRepo;
@@ -27,6 +29,7 @@ export class CallbackHandler {
     this.movieRepo        = movieRepo;
     this.userRepo         = userRepo;
     this.queue            = queue;
+    this.searchService    = searchService;
   }
 
   async handleCallback(callbackQuery) {
@@ -64,7 +67,7 @@ export class CallbackHandler {
         const users = await this.userRepo.countAll();
         const movies = await this.movieRepo.countAll();
         const files = await this.fileRepo.countAll();
-        const totalSizeBytes = await this.fileRepo.getTotalSizeBytes();
+        const totalSizeBytes = await this.fileRepo.getTotalSizeBytes ? await this.fileRepo.getTotalSizeBytes() : 0;
 
         let formattedFileSize = '0 MB';
         if (totalSizeBytes >= 1073741824) {
@@ -180,7 +183,148 @@ export class CallbackHandler {
 
     const [action, id] = data.split(':');
 
-    // ── File delivery ─────────────────────────────────────────────────────
+    // ── Movie Info / Selection Callback ───────────────────
+    if (action === CALLBACK.MOVIE_INFO) {
+      const movieId = parseInt(id);
+      if (!movieId) {
+        await this.telegramCallback.answer(queryId);
+        return;
+      }
+      const movie = await this.movieRepo.findById(movieId);
+      const files = await this.fileRepo.findByMovieId(movieId);
+
+      if (!movie || !files || files.length === 0) {
+        await this.telegramCallback.alert(queryId, '⚠️ File no longer available.');
+        return;
+      }
+
+      // Single file for movie -> send file directly!
+      if (files.length === 1) {
+        const file = files[0];
+        await this.telegramCallback.toast(queryId, '📤 Sending file…');
+
+        const fileCaption = [
+          `🎬 <b>${escapeHtml(file.fileName || movie.title || 'Movie File')}</b>`,
+          file.qualityLabel ? `📡 Quality: ${escapeHtml(file.qualityLabel)}` : '',
+          file.size         ? `💾 Size: ${escapeHtml(file.size)}` : '',
+        ].filter(Boolean).join('\n');
+
+        const fileMsg = await this.telegramMedia.sendFile(
+          chatId,
+          file.telegramFileId,
+          file.fileType,
+          fileCaption
+        );
+
+        const delMinutes = Math.round((AUTO_DELETE_SECONDS ?? 300) / 60);
+        const notifMsg = await this.telegramMedia._call('sendMessage', {
+          chat_id:    chatId,
+          text:       `🗑 <b>ʀᴇᴍᴇᴍʙᴇʀ:</b> Tʜɪs ꜰɪʟᴇ ᴀɴᴅ ᴛʜɪs ᴍᴇssᴀɢᴇ ᴡɪʟʟ ʙᴇ <b>ᴀᴜᴛᴏᴍᴀᴛɪᴄᴀʟʟʏ ᴅᴇʟᴇᴛᴇᴅ</b> ɪɴ <b>${delMinutes} ᴍɪɴᴜᴛᴇs</b>. 📥 Sᴀᴠᴇ ɪᴛ ᴛᴏ ʏᴏᴜʀ sᴀᴠᴇᴅ ᴍᴇssᴀɢᴇs ɴᴏᴡ!`,
+          parse_mode: 'HTML',
+        });
+
+        const idsToDelete = [];
+        if (fileMsg?.ok && fileMsg.result?.message_id)  idsToDelete.push(fileMsg.result.message_id);
+        if (notifMsg?.ok && notifMsg.result?.message_id) idsToDelete.push(notifMsg.result.message_id);
+
+        if (idsToDelete.length && this.queue) {
+          try {
+            await this.queue.send(
+              { type: 'delete_message', payload: { chatId, messageIds: idsToDelete } },
+              { delaySeconds: AUTO_DELETE_SECONDS ?? 300 }
+            );
+          } catch {}
+        }
+        return;
+      }
+
+      // Multiple files exist -> show quality options
+      const keyboard = buildQualityKeyboard(files, movieId);
+      const title = movie.title || 'Movie';
+      const year = movie.year ? ` (${movie.year})` : '';
+      const text = `🎬 <b>${escapeHtml(title)}${year}</b>\n\n📁 <b>Available Files:</b> ${files.length}\n\n⚠️ <b>ᴀꜰᴛᴇʀ 5 ᴍɪɴᴜᴛᴇs ᴛʜɪs ᴍᴇssᴀɢᴇ ᴡɪʟʟ ʙᴇ ᴀᴜᴛᴏᴍᴀᴛɪᴄᴀʟʟʏ ᴅᴇʟᴇᴛᴇᴅ</b>`;
+
+      if (messageId) {
+        await this.telegramMedia._call('editMessageText', {
+          chat_id: chatId,
+          message_id: messageId,
+          text,
+          parse_mode: 'HTML',
+          reply_markup: keyboard,
+        });
+      }
+      await this.telegramCallback.answer(queryId);
+      return;
+    }
+
+    // ── Pagination Callback (pg:query:page) ──────────────────────
+    if (action === CALLBACK.PAGE) {
+      const parts = data.split(':');
+      const queryStr = decodeURIComponent(parts[1] || '');
+      const targetPage = parseInt(parts[2]) || 1;
+
+      if (!queryStr) {
+        await this.telegramCallback.answer(queryId);
+        return;
+      }
+
+      if (this.searchService) {
+        const searchRes = await this.searchService.search(queryStr, targetPage);
+        if (searchRes && !searchRes.isEmpty) {
+          const requesterName = callbackQuery.from
+            ? [callbackQuery.from.first_name, callbackQuery.from.last_name].filter(Boolean).join(' ').trim() || callbackQuery.from.username || 'User'
+            : 'User';
+
+          const header = searchRes.toHeaderText(requesterName);
+          const keyboard = (await import('../telegram/keyboards.js')).buildSearchResultsKeyboard(
+            searchRes.movies,
+            queryStr,
+            searchRes.page,
+            searchRes.totalPages
+          );
+
+          if (messageId) {
+            await this.telegramMedia._call('editMessageText', {
+              chat_id: chatId,
+              message_id: messageId,
+              text: header,
+              parse_mode: 'HTML',
+              reply_markup: keyboard,
+            });
+          }
+        }
+      }
+      await this.telegramCallback.answer(queryId);
+      return;
+    }
+
+    // ── Quality selection ────────────────────────────────────────
+    if (action === CALLBACK.GET_QUALITY) {
+      const movieId = parseInt(id);
+      if (!movieId) {
+        await this.telegramCallback.answer(queryId);
+        return;
+      }
+      const files = await this.fileRepo.findByMovieId(movieId);
+      const keyboard = buildQualityKeyboard(files, movieId);
+      if (messageId) {
+        await this.telegramMedia._call('editMessageReplyMarkup', {
+          chat_id: chatId,
+          message_id: messageId,
+          reply_markup: keyboard,
+        });
+      } else {
+        await this.telegramMedia._call('sendMessage', {
+          chat_id: chatId,
+          text: 'Select file quality:',
+          reply_markup: keyboard,
+        });
+      }
+      await this.telegramCallback.answer(queryId);
+      return;
+    }
+
+    // ── File Delivery Callback ──────────────────────────────────
     if (action === CALLBACK.GET_FILE) {
       const file = await this.fileRepo.findById(parseInt(id));
       if (!file) {
@@ -190,14 +334,12 @@ export class CallbackHandler {
 
       await this.telegramCallback.toast(queryId, '📤 Sending file…');
 
-      // Caption shown with the file
       const fileCaption = [
         `🎬 <b>${escapeHtml(file.fileName || 'Movie File')}</b>`,
         file.qualityLabel ? `📡 Quality: ${escapeHtml(file.qualityLabel)}` : '',
         file.size         ? `💾 Size: ${escapeHtml(file.size)}` : '',
       ].filter(Boolean).join('\n');
 
-      // Send the file
       const fileMsg = await this.telegramMedia.sendFile(
         chatId,
         file.telegramFileId,
@@ -205,7 +347,6 @@ export class CallbackHandler {
         fileCaption
       );
 
-      // Send auto-delete notification below the file
       const delMinutes = Math.round((AUTO_DELETE_SECONDS ?? 300) / 60);
       const notifMsg = await this.telegramMedia._call('sendMessage', {
         chat_id:    chatId,
@@ -213,7 +354,6 @@ export class CallbackHandler {
         parse_mode: 'HTML',
       });
 
-      // Schedule deletion of both messages via Cloudflare Queue (delaySeconds)
       const idsToDelete = [];
       if (fileMsg?.ok && fileMsg.result?.message_id)  idsToDelete.push(fileMsg.result.message_id);
       if (notifMsg?.ok && notifMsg.result?.message_id) idsToDelete.push(notifMsg.result.message_id);
@@ -224,9 +364,7 @@ export class CallbackHandler {
             { type: 'delete_message', payload: { chatId, messageIds: idsToDelete } },
             { delaySeconds: AUTO_DELETE_SECONDS ?? 300 }
           );
-        } catch {
-          // Queue unavailable — deletion won't happen but file was still sent OK
-        }
+        } catch {}
       }
 
       return;

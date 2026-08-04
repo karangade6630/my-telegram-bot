@@ -34,15 +34,7 @@ export class MovieRepository extends BaseRepository {
     return row ? Movie.fromRow(row) : null;
   }
 
-  /**
-   * Find a movie by IMDb ID.
-   * @param {string} imdbId
-   * @returns {Promise<Movie|null>}
-   */
-  async findByImdbId(imdbId) {
-    const row = await this.first('SELECT * FROM movies WHERE imdb_id = ?', [imdbId]);
-    return row ? Movie.fromRow(row) : null;
-  }
+
 
   // ─────────────────────────────────────────────────────────
   // SEARCH METHODS
@@ -185,32 +177,24 @@ export class MovieRepository extends BaseRepository {
     const now = nowISO();
     const result = await this.run(
       `INSERT INTO movies (slug, title, original_title, year, type, language, genre, description,
-         director, cast, country, runtime, content_rating, imdb_id, imdb_rating, imdb_votes,
-         trailer_url, poster_url, created_at, updated_at)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+         director, cast, country, runtime, content_rating,
+         poster_url, popularity_score, search_count, created_at, updated_at)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
        ON CONFLICT(slug) DO UPDATE SET
-         imdb_rating    = COALESCE(excluded.imdb_rating, movies.imdb_rating),
-         imdb_votes     = COALESCE(excluded.imdb_votes, movies.imdb_votes),
+         title          = COALESCE(excluded.title, movies.title),
          poster_url     = COALESCE(excluded.poster_url, movies.poster_url),
-         director       = COALESCE(excluded.director, movies.director),
-         cast           = COALESCE(excluded.cast, movies.cast),
-         description    = COALESCE(excluded.description, movies.description),
-         genre          = COALESCE(excluded.genre, movies.genre),
-         trailer_url    = COALESCE(excluded.trailer_url, movies.trailer_url),
+         language       = COALESCE(excluded.language, movies.language),
          updated_at     = excluded.updated_at`,
       [
         data.slug, data.title, data.original_title ?? null, data.year ?? null,
         data.type ?? 'movie', data.language ?? null, data.genre ?? null,
         data.description ?? null, data.director ?? null, data.cast ?? null,
         data.country ?? null, data.runtime ?? null, data.content_rating ?? null,
-        data.imdb_id ?? null, data.imdb_rating ?? null, data.imdb_votes ?? null,
-        data.trailer_url ?? null, data.poster_url ?? null, now, now,
+        data.poster_url ?? null, data.popularity_score ?? 0, data.search_count ?? 0,
+        now, now,
       ]
     );
-
     if (result.meta?.last_row_id) return result.meta.last_row_id;
-
-    // On conflict (update), fetch the existing id
     const existing = await this.findBySlug(data.slug);
     return existing?.id;
   }

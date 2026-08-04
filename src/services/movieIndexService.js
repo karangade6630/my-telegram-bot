@@ -19,15 +19,13 @@ export class MovieIndexService {
    * @param {import('../repositories/FileRepository.js').FileRepository} fileRepo
    * @param {import('../repositories/MovieFileRepository.js').MovieFileRepository} movieFileRepo
    * @param {import('../repositories/ChannelRepository.js').ChannelRepository} channelRepo
-   * @param {import('./omdbService.js').OmdbService} [omdbService]
    * @param {import('../interfaces/Queue.js').IQueue} [queue]
    */
-  constructor(movieRepo, fileRepo, movieFileRepo, channelRepo, omdbService = null, queue = null) {
+  constructor(movieRepo, fileRepo, movieFileRepo, channelRepo, queue = null) {
     this.movieRepo = movieRepo;
     this.fileRepo = fileRepo;
     this.movieFileRepo = movieFileRepo;
     this.channelRepo = channelRepo;
-    this.omdbService = omdbService;
     this.queue = queue;
   }
 
@@ -49,15 +47,7 @@ export class MovieIndexService {
       return { status: 'skipped', fileId: existingFile.id };
     }
 
-    let omdbMeta = null;
-    if (this.omdbService) {
-      omdbMeta = await this.omdbService.fetchMovieMetadata(parsed.movieTitle, parsed.year);
-    }
-
-    const movieModel = Movie.fromParsed({
-      ...parsed,
-      ...(omdbMeta || {}),
-    });
+    const movieModel = Movie.fromParsed(parsed);
 
     const movieId = await this.movieRepo.upsert(movieModel.toRow());
 

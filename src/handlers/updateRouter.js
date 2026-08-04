@@ -23,7 +23,7 @@ export class UpdateRouter {
     this.callbackHandler = new CallbackHandler(deps.telegramCallback, deps.telegramMedia, deps.fileRepo, deps.movieFileRepo, deps.movieRepo, deps.userRepo, deps.config.queue);
     this.inlineHandler = new InlineHandler(deps.telegramInline, deps.searchService, deps.config.botUsername);
     this.channelPostHandler = new ChannelPostHandler(deps.movieIndexService);
-    this.adminHandler = new AdminHandler(deps.telegramMessages, deps.analyticsService, deps.userRepo, deps.movieRepo, deps.fileRepo);
+    this.adminHandler = new AdminHandler(deps.telegramMessages, deps.analyticsService, deps.userRepo, deps.movieRepo, deps.fileRepo, deps.broadcastService);
   }
 
   async route(update) {
@@ -57,7 +57,7 @@ export class UpdateRouter {
         const args = extractCommandArgs(text);
         const isAdminUser = user.isAdmin || (this.deps.config?.adminIds && this.deps.config.adminIds.has(String(from.id)));
         if (isAdminUser && ['/stats', '/broadcast', '/ban', '/unban', '/movies', '/users'].includes(command)) {
-          return await this.adminHandler.handleAdminCommand(chatId, command, args);
+          return await this.adminHandler.handleAdminCommand(chatId, command, args, user);
         }
         return await this.commandHandler.handleCommand(chatId, command, args, user);
       }

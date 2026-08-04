@@ -21,6 +21,7 @@ import { SearchService } from '../services/searchService.js';
 import { OmdbService } from '../services/omdbService.js';
 import { MovieIndexService } from '../services/movieIndexService.js';
 import { AnalyticsService } from '../services/analyticsService.js';
+import { BroadcastService } from '../services/broadcastService.js';
 
 import { TelegramMessages } from '../telegram/messages.js';
 import { TelegramMedia } from '../telegram/media.js';
@@ -61,19 +62,20 @@ export async function handleWebhookRequest(request, env) {
   const analyticsRepo = new AnalyticsRepository(config.database);
   const settingsRepo = new SettingsRepository(config.database);
 
-  // Service initialization
-  const cacheService = new CacheService(config.cache, baseRepo);
-  const omdbService = new OmdbService(config.omdbApiKey, cacheService);
-  const searchService = new SearchService(movieRepo, cacheService);
-  const movieIndexService = new MovieIndexService(movieRepo, fileRepo, movieFileRepo, channelRepo, omdbService, config.queue);
-  const analyticsService = new AnalyticsService(analyticsRepo);
-
   // Telegram API Wrappers
   const telegramMessages = new TelegramMessages(config.botToken);
   const telegramMedia = new TelegramMedia(config.botToken);
   const telegramCallback = new TelegramCallback(config.botToken);
   const telegramInline = new TelegramInline(config.botToken);
   const telegramChat = new TelegramChat(config.botToken);
+
+  // Service initialization
+  const cacheService = new CacheService(config.cache, baseRepo);
+  const omdbService = new OmdbService(config.omdbApiKey, cacheService);
+  const searchService = new SearchService(movieRepo, cacheService);
+  const movieIndexService = new MovieIndexService(movieRepo, fileRepo, movieFileRepo, channelRepo, config.queue);
+  const analyticsService = new AnalyticsService(analyticsRepo);
+  const broadcastService = new BroadcastService(userRepo, baseRepo, config.queue, telegramMessages);
 
   const router = new UpdateRouter({
     config,
@@ -90,6 +92,7 @@ export async function handleWebhookRequest(request, env) {
     searchService,
     movieIndexService,
     analyticsService,
+    broadcastService,
     telegramMessages,
     telegramMedia,
     telegramCallback,
