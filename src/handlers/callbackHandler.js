@@ -35,14 +35,16 @@ export class CallbackHandler {
 	async sendFileMessage(chatId, queryId, file, movie = null) {
 		await this.telegramCallback.toast(queryId, '📤 Sending file…');
 
-		const title = movie?.title || file.fileName || 'Movie File';
-		const fileCaption = [
-			`🎬 <b>${escapeHtml(title)}</b>`,
-			file.qualityLabel ? `📡 Quality: ${escapeHtml(file.qualityLabel)}` : '',
-			file.size ? `💾 Size: ${escapeHtml(file.size)}` : '',
-		]
-			.filter(Boolean)
-			.join('\n');
+		const fileCaption = file.fileName || movie?.title || 'File';
+
+		const channelButtons = {
+			inline_keyboard: [
+				[
+					{ text: '📢 Channel 1', url: 'https://t.me/movie_time_v1' },
+					{ text: '📢 Channel 2', url: 'https://t.me/+_OhMUT6XxBkwNWFl' },
+				],
+			],
+		};
 
 		let fileMsg = null;
 
@@ -54,6 +56,7 @@ export class CallbackHandler {
 				message_id: file.messageId,
 				caption: fileCaption,
 				parse_mode: 'HTML',
+				reply_markup: channelButtons,
 			});
 
 			if (!fileMsg?.ok) {
@@ -61,6 +64,7 @@ export class CallbackHandler {
 					chat_id: chatId,
 					from_chat_id: file.channelId,
 					message_id: file.messageId,
+					reply_markup: channelButtons,
 				});
 			}
 
@@ -75,11 +79,13 @@ export class CallbackHandler {
 
 		// 2. Fallback to sending by telegramFileId
 		if (!fileMsg?.ok) {
-			fileMsg = await this.telegramMedia.sendFile(chatId, file.telegramFileId, file.fileType, fileCaption);
+			fileMsg = await this.telegramMedia.sendFile(chatId, file.telegramFileId, file.fileType, fileCaption, {
+				reply_markup: channelButtons,
+			});
 		}
 
 		if (!fileMsg?.ok) {
-			fileMsg = await this.telegramMedia.sendDocument(chatId, file.telegramFileId, fileCaption);
+			fileMsg = await this.telegramMedia.sendDocument(chatId, file.telegramFileId, fileCaption, { reply_markup: channelButtons });
 		}
 
 		const delMinutes = Math.round((AUTO_DELETE_SECONDS ?? 300) / 60);
