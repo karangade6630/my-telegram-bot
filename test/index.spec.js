@@ -10,12 +10,12 @@ describe('Movie AutoFilter worker', () => {
 		const ctx = createExecutionContext();
 		const response = await worker.fetch(request, env, ctx);
 		await waitOnExecutionContext(ctx);
-		expect(await response.text()).toMatchInlineSnapshot(`"Bot is running!"`);
+		expect(await response.text()).toMatchInlineSnapshot(`"🤖 Telegram Movie AutoFilter Bot is online and healthy."`);
 	});
 
 	it('responds with the bot health status on GET / (integration style)', async () => {
 		const response = await SELF.fetch('http://example.com');
-		expect(await response.text()).toMatchInlineSnapshot(`"Bot is running!"`);
+		expect(await response.text()).toMatchInlineSnapshot(`"🤖 Telegram Movie AutoFilter Bot is online and healthy."`);
 	});
 });
 
