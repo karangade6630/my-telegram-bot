@@ -13,25 +13,36 @@ import { Logger } from '../utils/logger.js';
 const logger = new Logger('QueueWorker');
 
 export class QueueWorker {
-  static async process(batch, env) {
-    const telegramMessages = new TelegramMessages(env.BOT_TOKEN);
-    const broadcastJob = new BroadcastJob(telegramMessages);
+	static async process(batch, env) {
+		const telegramMessages = new TelegramMessages(env.BOT_TOKEN);
+		const broadcastJob = new BroadcastJob(telegramMessages);
 
-    for (const message of batch.messages) {
-      const { type, payload } = message.body;
-      logger.info(`Processing queue job: ${type}`);
+		for (const message of batch.messages) {
+			const { type, payload } = message.body;
+			logger.info(`Processing queue job: ${type}`);
 
-      try {
-        if (type === 'broadcast_chunk') {
-          await broadcastJob.run(message.body);
-        } else if (type === 'analytics') {
-          // Analytics queue handling
-        }
-        message.ack();
-      } catch (err) {
-        logger.error(`Queue job ${type} failed`, { error: err.message });
-        message.retry();
-      }
-    }
-  }
+			try {
+				if (type === 'broadcast_chunk') {
+					await broadcastJob.run(message.body);
+				} else if (type === 'delete_message') {
+					const { chatId, messageIds } = payload || {};
+					if (chatId && Array.isArray(messageIds)) {
+						for (const msgId of messageIds) {
+							try {
+								await telegramMessages.deleteMessage(chatId, msgId);
+							} catch (e) {
+								logger.warn(`Failed to delete message ${msgId} in chat ${chatId}: ${e.message}`);
+							}
+						}
+					}
+				} else if (type === 'analytics') {
+					// Analytics queue handling
+				}
+				message.ack();
+			} catch (err) {
+				logger.error(`Queue job ${type} failed`, { error: err.message });
+				message.retry();
+			}
+		}
+	}
 }

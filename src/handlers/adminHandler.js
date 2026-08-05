@@ -161,6 +161,88 @@ export class AdminHandler {
 				break;
 			}
 
+			case '/delete_file': {
+				const arg = args[0];
+				if (!arg) {
+					await this.telegramMessages.sendMessage(chatId, '⚠️ <b>Usage:</b> <code>/delete_file &lt;file_id_or_telegram_id&gt;</code>');
+					return;
+				}
+				let file = null;
+				if (!isNaN(arg)) {
+					file = await this.fileRepo.findById(parseInt(arg));
+				}
+				if (!file) {
+					file = await this.fileRepo.findByFileId(arg);
+				}
+				if (!file) {
+					await this.telegramMessages.sendMessage(chatId, `❌ File <code>${arg}</code> not found in database.`);
+					return;
+				}
+				await this.fileRepo.delete(file.id);
+				await this.telegramMessages.sendMessage(
+					chatId,
+					`✅ <b>File Deleted</b>\n\n📁 File Name: <code>${file.fileName}</code>\n🆔 ID: <code>${file.id}</code>`,
+				);
+				break;
+			}
+
+			case '/delete_movie': {
+				const arg = args.join(' ');
+				if (!arg) {
+					await this.telegramMessages.sendMessage(chatId, '⚠️ <b>Usage:</b> <code>/delete_movie &lt;movie_id_or_title&gt;</code>');
+					return;
+				}
+				let movie = null;
+				if (!isNaN(arg)) {
+					movie = await this.movieRepo.findById(parseInt(arg));
+				}
+				if (!movie) {
+					const found = await this.movieRepo.searchExact(arg);
+					movie = found?.[0] || null;
+				}
+				if (!movie) {
+					const containsRes = await this.movieRepo.searchContains(arg, { limit: 1 });
+					movie = containsRes?.rows?.[0] || null;
+				}
+				if (!movie) {
+					await this.telegramMessages.sendMessage(chatId, `❌ Movie <code>${arg}</code> not found in database.`);
+					return;
+				}
+				await this.movieRepo.delete(movie.id);
+				await this.telegramMessages.sendMessage(
+					chatId,
+					`✅ <b>Movie & Associated Files Deleted</b>\n\n🎬 Title: <b>${movie.title}</b>\n🆔 Movie ID: <code>${movie.id}</code>`,
+				);
+				break;
+			}
+
+			case '/delete_all_files':
+			case '/deleteall': {
+				await this.telegramMessages.sendMessage(chatId, '🗑 <b>Deleting all movies and files from database...</b>');
+				try {
+					const movieCount = await this.movieRepo.countAll();
+					const fileCount = await this.fileRepo.countAll();
+
+					if (this.db) {
+						await this.db.prepare('DELETE FROM movie_files').run();
+						await this.db.prepare('DELETE FROM files').run();
+						await this.db.prepare('DELETE FROM movies').run();
+					} else {
+						await this.fileRepo.run('DELETE FROM movie_files', []);
+						await this.fileRepo.run('DELETE FROM files', []);
+						await this.movieRepo.run('DELETE FROM movies', []);
+					}
+
+					await this.telegramMessages.sendMessage(
+						chatId,
+						`✅ <b>All Movies & Files Deleted</b>\n\n🎬 Movies removed: <code>${movieCount}</code>\n💾 Files removed: <code>${fileCount}</code>\n\nDatabase media index is now clean!`,
+					);
+				} catch (error) {
+					await this.telegramMessages.sendMessage(chatId, `❌ <b>Deletion failed:</b> ${error.message}`);
+				}
+				break;
+			}
+
 			default:
 				break;
 		}

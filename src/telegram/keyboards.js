@@ -80,6 +80,7 @@ export function buildMovieInfoKeyboard(movieId, trailerUrl, imdbUrl) {
  * @returns {object}
  */
 export function buildSearchResultsKeyboard(movies, query, page, totalPages) {
+	const safeQuery = String(query || '').slice(0, 40);
 	const rows = movies.map((movie) => {
 		// Build label: show file size if available, then title + year
 		const sizeLabel = movie.totalSize ? `[${movie.totalSize}] ` : '';
@@ -100,7 +101,7 @@ export function buildSearchResultsKeyboard(movies, query, page, totalPages) {
 		if (page < totalPages) {
 			navRow.push({
 				text: 'NEXT ⇒',
-				callback_data: `${CALLBACK.PAGE}:${page + 1}`,
+				callback_data: `${CALLBACK.PAGE}:${page + 1}:${safeQuery}`,
 			});
 		} else {
 			navRow.push({ text: '—', callback_data: CALLBACK.NOOP });
@@ -109,7 +110,7 @@ export function buildSearchResultsKeyboard(movies, query, page, totalPages) {
 	} else if (page > 1) {
 		// Only back navigation
 		rows.push([
-			{ text: '⇐ PREV', callback_data: `${CALLBACK.PAGE}:${page - 1}` },
+			{ text: '⇐ PREV', callback_data: `${CALLBACK.PAGE}:${page - 1}:${safeQuery}` },
 			{ text: `${page}/${totalPages}`, callback_data: CALLBACK.NOOP },
 			{ text: '—', callback_data: CALLBACK.NOOP },
 		]);
@@ -119,9 +120,11 @@ export function buildSearchResultsKeyboard(movies, query, page, totalPages) {
 	if (page > 1 && totalPages > 1) {
 		// Replace nav row to include ⇐ PREV
 		rows[rows.length - 1] = [
-			{ text: '⇐ PREV', callback_data: `${CALLBACK.PAGE}:${page - 1}` },
+			{ text: '⇐ PREV', callback_data: `${CALLBACK.PAGE}:${page - 1}:${safeQuery}` },
 			{ text: `${page}/${totalPages}`, callback_data: CALLBACK.NOOP },
-			page < totalPages ? { text: 'NEXT ⇒', callback_data: `${CALLBACK.PAGE}:${page + 1}` } : { text: '—', callback_data: CALLBACK.NOOP },
+			page < totalPages
+				? { text: 'NEXT ⇒', callback_data: `${CALLBACK.PAGE}:${page + 1}:${safeQuery}` }
+				: { text: '—', callback_data: CALLBACK.NOOP },
 		];
 	}
 

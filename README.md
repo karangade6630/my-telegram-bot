@@ -5,6 +5,7 @@ An enterprise-level, production-ready, fully serverless Telegram Movie AutoFilte
 ---
 
 ## 📌 Table of Contents
+
 1. [Overview & Architecture](#-overview--architecture)
 2. [Complete Feature List](#-complete-feature-list)
 3. [Bot Commands Reference](#-bot-commands-reference)
@@ -33,6 +34,7 @@ This bot is designed to handle over **100,000+ active users** using a modular, s
 ## 🚀 Complete Feature List
 
 ### 👤 User Features
+
 - **Instant AutoFilter Movie Search**: Users send a movie or series title (e.g. `Avengers Endgame`). The bot returns movie details (IMDb rating, cast, genre, language) with interactive file buttons.
 - **One-Click File Delivery & Auto-Delete**: Clicking any quality/filename button instantly delivers the Telegram file via `file_id` and schedules an automatic message deletion after 5 minutes.
 - **Inline Mode (`@BotUsername Movie Name`)**: Search movies directly from any Telegram chat or group without adding the bot.
@@ -41,6 +43,7 @@ This bot is designed to handle over **100,000+ active users** using a modular, s
 - **User Engagement**: Support for Watchlists, Favorites, and Search History tracking.
 
 ### 🎥 Channel Auto-Indexing Engine
+
 - **Automatic Channel Post Interception**: Add the bot as an administrator in your private file storage channels.
 - **Smart Metadata Extraction**: Automatically parses filenames and captions for:
   - Movie / Series Title (removes release tags like `A2M`, `PM`, `@channel`)
@@ -53,6 +56,7 @@ This bot is designed to handle over **100,000+ active users** using a modular, s
 - **Duplicate Detection**: Uses Telegram `file_unique_id` to prevent duplicate file entries in D1.
 
 ### 🛡️ Admin Panel & Management
+
 - **Dashboard Metrics (`/stats`)**: Real-time stats on total users, total movies, indexed files, and database metrics.
 - **Mass User Broadcast (`/broadcast`)**: Queue-backed chunked mass messaging that safely broadcasts announcements to thousands of active users without hitting Telegram rate limits.
 - **User Management (`/ban`, `/unban`, `/users`)**: View user metrics and ban/unban abusive users from interacting with the bot.
@@ -64,30 +68,33 @@ This bot is designed to handle over **100,000+ active users** using a modular, s
 
 Here is a full breakdown of all supported Telegram commands, their parameters, required permissions, and functionality:
 
-| Command | Category | Parameters | Permissions | Description & Functionality |
-| :--- | :--- | :--- | :--- | :--- |
-| `/start` | Public | None | All Users | Displays the welcome banner image (Movie Time neon graphic), bot introduction, and quick search instructions. |
-| `/help` | Public | None | All Users | Displays detailed user guide, tips for finding files, and search formatting examples. |
-| `/about` | Public | None | All Users | Shows details about the bot platform, technologies used, version info, and capabilities. |
-| `/stats` | Admin | None | Admins Only | Displays real-time database metrics including total users, total indexed movies, total files, and interactive dashboard keyboard. |
-| `/users` | Admin | None | Admins Only | Displays total registered user counts and active user statistics. |
-| `/movies` | Admin | None | Admins Only | Displays total movie count and lists the 5 most recently indexed movies in the database. |
-| `/broadcast` | Admin | `<message_text>` | Admins Only | Initiates a queue-backed mass broadcast announcement to all non-banned users in the system. |
-| `/ban` | Admin | `<user_id> [reason]` | Admins Only | Blacklists a user by their Telegram User ID, preventing them from running searches or receiving files. |
-| `/unban` | Admin | `<user_id>` | Admins Only | Removes a user from the blacklist and restores their bot access. |
+| Command                            | Category | Parameters            | Permissions | Description & Functionality                                                                                                                  |
+| :--------------------------------- | :------- | :-------------------- | :---------- | :------------------------------------------------------------------------------------------------------------------------------------------- |
+| `/start`                           | Public   | None                  | All Users   | Displays the welcome banner image (Movie Time neon graphic), bot introduction, and quick search instructions.                                |
+| `/help`                            | Public   | None                  | All Users   | Displays detailed user guide, tips for finding files, and search formatting examples.                                                        |
+| `/about`                           | Public   | None                  | All Users   | Shows details about the bot platform, technologies used, version info, and capabilities.                                                     |
+| `/stats`                           | Admin    | None                  | Admins Only | Displays real-time database metrics including total users, total indexed movies, total files, and interactive dashboard keyboard.            |
+| `/users`                           | Admin    | None                  | Admins Only | Displays total registered user counts and active user statistics.                                                                            |
+| `/movies`                          | Admin    | None                  | Admins Only | Displays total movie count and lists the 5 most recently indexed movies in the database.                                                     |
+| `/broadcast`                       | Admin    | `<message_text>`      | Admins Only | Initiates a queue-backed mass broadcast announcement to all non-banned users in the system.                                                  |
+| `/ban`                             | Admin    | `<user_id> [reason]`  | Admins Only | Blacklists a user by their Telegram User ID, preventing them from running searches or receiving files.                                       |
+| `/unban`                           | Admin    | `<user_id>`           | Admins Only | Removes a user from the blacklist and restores their bot access.                                                                             |
+| `/delete_file`                     | Admin    | `<id_or_telegram_id>` | Admins Only | Delete a specific file record from the database.                                                                                             |
+| `/delete_movie`                    | Admin    | `<id_or_title>`       | Admins Only | Delete a specific movie and its linked files.                                                                                                |
+| `/delete_all_files` / `/deleteall` | Admin    | None                  | Admins Only | Purge all movies, files, and file mappings from the database in a single step while preserving user accounts, settings, and database schema. |
 
 ---
 
 ## 🛠️ Technology Stack
 
-| Layer | Component | Description |
-| :--- | :--- | :--- |
-| **Runtime** | Cloudflare Workers | Serverless JavaScript (ES Modules, `nodejs_compat`) |
-| **Database** | Cloudflare D1 | Serverless SQLite database with prepared statements |
-| **Cache** | Cloudflare KV | Low-latency key-value store for search results & IMDb cache |
-| **Queue** | Cloudflare Queues | Async background queue for broadcasting & message auto-deletion |
-| **Scheduler** | Cron Triggers | Daily scheduled task for log cleanup and analytics rotation |
-| **API Integration** | OMDB & IMDb | Multi-stage metadata pipeline for rating, genre, cast & plot |
+| Layer               | Component          | Description                                                     |
+| :------------------ | :----------------- | :-------------------------------------------------------------- |
+| **Runtime**         | Cloudflare Workers | Serverless JavaScript (ES Modules, `nodejs_compat`)             |
+| **Database**        | Cloudflare D1      | Serverless SQLite database with prepared statements             |
+| **Cache**           | Cloudflare KV      | Low-latency key-value store for search results & IMDb cache     |
+| **Queue**           | Cloudflare Queues  | Async background queue for broadcasting & message auto-deletion |
+| **Scheduler**       | Cron Triggers      | Daily scheduled task for log cleanup and analytics rotation     |
+| **API Integration** | OMDB & IMDb        | Multi-stage metadata pipeline for rating, genre, cast & plot    |
 
 ---
 
@@ -170,6 +177,7 @@ When indexing new files or searching movies:
 ## 📦 Step-by-Step Installation & Setup Guide
 
 ### 1. Clone & Install Dependencies
+
 ```bash
 git clone <your-repo-url>
 cd my-telegram-bot
@@ -177,6 +185,7 @@ npm install
 ```
 
 ### 2. Configure Cloudflare Bindings
+
 Ensure your `wrangler.jsonc` has your D1 Database ID and KV Namespace ID configured:
 
 ```jsonc
@@ -198,6 +207,7 @@ Ensure your `wrangler.jsonc` has your D1 Database ID and KV Namespace ID configu
 ```
 
 ### 3. Initialize D1 Database Tables
+
 Run the schema initialization against your remote Cloudflare D1 database:
 
 ```bash
@@ -205,6 +215,7 @@ npx wrangler d1 execute movie_bot --remote --file=./src/database/schema.sql
 ```
 
 ### 4. Set Worker Secrets
+
 Set your sensitive credentials in Cloudflare Worker Secrets:
 
 ```bash
@@ -214,11 +225,13 @@ npx wrangler secret put ADMIN_IDS
 ```
 
 ### 5. Deploy to Cloudflare Workers
+
 ```bash
 npm run deploy
 ```
 
 ### 6. Register Telegram Webhook
+
 Register your worker URL with Telegram Bot API:
 
 ```powershell
@@ -233,6 +246,7 @@ Invoke-RestMethod -Uri "https://api.telegram.org/bot<YOUR_BOT_TOKEN>/setWebhook"
 ## 📖 How to Use (User & Admin Guide)
 
 ### 1. User Searching for Movies
+
 1. Open a chat with your Telegram Bot.
 2. Send `/start` to view the welcome message.
 3. Type any movie title, e.g.:
@@ -243,6 +257,7 @@ Invoke-RestMethod -Uri "https://api.telegram.org/bot<YOUR_BOT_TOKEN>/setWebhook"
 5. Click any file button to instantly receive the video file.
 
 ### 2. Auto-Indexing Channel Files (Admins)
+
 1. Create a private Telegram channel for storage.
 2. Add your bot to the channel as an **Administrator** with permission to read messages.
 3. Upload or forward video files/documents into the channel with standard naming formats:
@@ -252,12 +267,16 @@ Invoke-RestMethod -Uri "https://api.telegram.org/bot<YOUR_BOT_TOKEN>/setWebhook"
 4. The bot will receive a `channel_post` update, extract metadata, clean noise tags, create database entries in D1, and link the file's `file_id` automatically.
 
 ### 3. Admin Dashboard & Operations
+
 - **/stats**: Displays real-time database metrics (total users, total movies indexed, total files).
 - **/broadcast `<message>`**: Triggers a queue-backed announcement broadcast to all users.
 - **/ban `<user_id>`**: Bans a user from searching or receiving files.
 - **/unban `<user_id>`**: Unbans a user.
 - **/movies**: Displays total indexed movies and top recent entries.
 - **/users**: Displays user statistics.
+- **/delete_file `<id_or_telegram_id>`**: Delete a specific file record from the database.
+- **/delete_movie `<id_or_title>`**: Delete a specific movie and its linked files.
+- **/delete_all_files** / **/deleteall**: Purge all movies, files, and file mappings from the database in a single step while preserving user accounts, settings, and database schema.
 
 ---
 

@@ -207,7 +207,7 @@ export const SEARCH = Object.freeze({
 	MIN_QUERY_LENGTH: 2,
 	MAX_QUERY_LENGTH: 100,
 	FUZZY_THRESHOLD: 0.6, // Levenshtein similarity ≥ 0.6 qualifies
-	RESULTS_PER_PAGE: 5,
+	RESULTS_PER_PAGE: 10,
 	INLINE_RESULTS_LIMIT: 8,
 });
 
@@ -382,7 +382,7 @@ export const FILENAME_PATTERNS = Object.freeze({
 
 export const PAGINATION = Object.freeze({
 	DEFAULT_PAGE: 1,
-	RESULTS_PER_PAGE: 5,
+	RESULTS_PER_PAGE: 10,
 	MAX_PAGES: 20,
 });
 
