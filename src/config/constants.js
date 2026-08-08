@@ -166,6 +166,7 @@ export const KV_KEYS = Object.freeze({
 // ─────────────────────────────────────────────────────────────
 
 export const OMDB_BASE_URL = 'https://www.omdbapi.com/';
+export const POSTER_API_URL = 'https://symmetrical-winner-x5pv496pqvvqfv5g7-3000.app.github.dev/api/movies';
 export const IMDB_SUGGEST = 'https://v3.sg.media-imdb.com/suggestion';
 export const IMDB_TITLE_BASE = 'https://www.imdb.com/title';
 export const IMDB_FIND_BASE = 'https://www.imdb.com/find';
