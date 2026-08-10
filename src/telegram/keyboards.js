@@ -21,7 +21,7 @@ import { CALLBACK, EMOJI, PAGINATION } from '../config/constants.js';
  */
 export function buildQualityKeyboard(files, movieId, page = 1) {
 	if (!files || files.length === 0) {
-		return { inline_keyboard: [[{ text: 'No files available', callback_data: CALLBACK.NOOP }]] };
+		return { inline_keyboard: [[{ text: 'No files available', url: 'https://google.com' }]] };
 	}
 
 	const perPage = 10;
@@ -31,30 +31,15 @@ export function buildQualityKeyboard(files, movieId, page = 1) {
 	const endIndex = startIndex + perPage;
 	const limitedFiles = files.slice(startIndex, endIndex);
 
-	// One button per file — show the actual filename so users know exactly what they're downloading
+	// One button per file — only uses url property, no callback_data
 	const rows = limitedFiles.map((file) => {
 		const size = file.size ? `[${file.size}] ` : '';
 		const rawName = file.fileName || file.qualityLabel || 'Unknown File';
 		// Telegram button text max is ~200 chars; cap at 180 to keep UI clean
 		const label = `${size}${rawName}`.slice(0, 180);
-		return [{ text: label, callback_data: `${CALLBACK.GET_FILE}:${file.id}` }];
+		const url = file.url || 'https://google.com';
+		return [{ text: label, url }];
 	});
-
-	// Pagination row: PAGE | 1/totalPages | NEXT ⇒
-	if (totalPages > 1) {
-		const navRow = [];
-		if (safePage > 1) navRow.push({ text: '⇐ PREV', callback_data: `${CALLBACK.GET_QUALITY}:${movieId}:${safePage - 1}` });
-		else navRow.push({ text: '—', callback_data: CALLBACK.NOOP });
-
-		navRow.push({ text: `${safePage}/${totalPages}`, callback_data: CALLBACK.NOOP });
-
-		if (safePage < totalPages) navRow.push({ text: 'NEXT ⇒', callback_data: `${CALLBACK.GET_QUALITY}:${movieId}:${safePage + 1}` });
-		else navRow.push({ text: '—', callback_data: CALLBACK.NOOP });
-		rows.push(navRow);
-	}
-
-	// Single close button
-	rows.push([{ text: `${EMOJI.CROSS} Close`, callback_data: CALLBACK.CLOSE }]);
 
 	return { inline_keyboard: rows };
 }
@@ -75,7 +60,7 @@ export function buildMovieInfoKeyboard(movieId, trailerUrl, imdbUrl) {
 	if (row1.length) rows.push(row1);
 
 	rows.push([
-		{ text: `${EMOJI.DOWNLOAD} Get Files`, callback_data: `${CALLBACK.GET_QUALITY}:${movieId}` },
+		{ text: `${EMOJI.DOWNLOAD} Get Files`, url: 'https://google.com' },
 		{ text: `${EMOJI.BOOKMARK} Watchlist`, callback_data: `${CALLBACK.WATCHLIST_ADD}:${movieId}` },
 		{ text: `${EMOJI.HEART} Favorite`, callback_data: `${CALLBACK.FAVORITE_ADD}:${movieId}` },
 	]);
@@ -91,7 +76,7 @@ export function buildMovieInfoKeyboard(movieId, trailerUrl, imdbUrl) {
 
 /**
  * Build a search results list keyboard — one button per movie result.
- * Each button shows "[size] Title (year)" and pagination shows PAGE | 1/12 | NEXT ⇒.
+ * Each button shows "[size] Title (year)" and opens https://google.com when clicked.
  *
  * @param {import('../models/Movie.js').Movie[]} movies
  * @param {string}  query
@@ -108,7 +93,7 @@ export function buildSearchResultsKeyboard(movies, query, page, totalPages) {
 		return [
 			{
 				text: `${sizeLabel}${movie.title}${yearLabel}`,
-				callback_data: `${CALLBACK.MOVIE_INFO}:${movie.id}`,
+				url: 'https://google.com',
 			},
 		];
 	});
@@ -253,7 +238,7 @@ export function buildWatchlistItemKeyboard(movieId) {
 	return {
 		inline_keyboard: [
 			[
-				{ text: `${EMOJI.DOWNLOAD} Get Files`, callback_data: `${CALLBACK.GET_QUALITY}:${movieId}` },
+				{ text: `${EMOJI.DOWNLOAD} Get Files`, url: 'https://google.com' },
 				{ text: '🗑 Remove', callback_data: `${CALLBACK.WATCHLIST_RM}:${movieId}` },
 			],
 		],

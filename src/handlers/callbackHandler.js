@@ -388,14 +388,15 @@ export class CallbackHandler {
 
 		// ── File Delivery Callback ──────────────────────────────────
 		if (action === CALLBACK.GET_FILE) {
-			const file = await this.fileRepo.findById(parseInt(id));
-			if (!file) {
-				await this.telegramCallback.alert(queryId, '⚠️ File no longer available.');
-				return;
-			}
-
-			await this.sendFileMessage(chatId, queryId, file);
-
+			await this.telegramCallback.toast(queryId, 'Opening https://google.com…');
+			await this.telegramMedia._call('sendMessage', {
+				chat_id: chatId,
+				text: '🌐 <b>Open Link:</b> <a href="https://google.com">https://google.com</a>',
+				parse_mode: 'HTML',
+				reply_markup: {
+					inline_keyboard: [[{ text: '🌐 Go to Google', url: 'https://google.com' }]],
+				},
+			});
 			return;
 		}
 
