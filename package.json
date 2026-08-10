@@ -1,18 +1,24 @@
 {
-  "name": "my-telegram-bot",
-  "version": "0.0.0",
-  "private": true,
-  "scripts": {
-    "build": "echo 'Build complete'",
-    "lint": "echo 'Lint complete'",
-    "deploy": "wrangler deploy",
-    "dev": "wrangler dev --port 3000 --ip 0.0.0.0 --local",
-    "start": "wrangler dev --port 3000 --ip 0.0.0.0 --local",
-    "test": "vitest"
-  },
-  "devDependencies": {
-    "@cloudflare/vitest-pool-workers": "^0.12.4",
-    "vitest": "~3.2.0",
-    "wrangler": "^4.118.0"
-  }
+	"name": "my-telegram-bot",
+	"version": "0.0.0",
+	"private": true,
+	"scripts": {
+		"build": "vite build",
+		"lint": "echo 'Lint complete'",
+		"deploy": "npm run build && wrangler deploy",
+		"dev": "wrangler dev --port 3000 --ip 0.0.0.0 --local",
+		"start": "wrangler dev --port 3000 --ip 0.0.0.0 --local",
+		"test": "vitest"
+	},
+	"devDependencies": {
+		"@cloudflare/vitest-pool-workers": "^0.12.4",
+		"@vitejs/plugin-react": "^5.2.0",
+		"vite": "^7.3.6",
+		"vitest": "~3.2.0",
+		"wrangler": "^4.118.0"
+	},
+	"dependencies": {
+		"react": "^19.2.8",
+		"react-dom": "^19.2.8"
+	}
 }

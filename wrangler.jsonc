@@ -49,4 +49,8 @@
 		"MAX_RESULTS": "10",
 		"SETTINGS": "{\"maintenance\":false,\"forceSubscribe\":false}",
 	},
+	"assets": {
+		"directory": "./dist",
+		"not_found_handling": "single-page-application",
+	},
 }
