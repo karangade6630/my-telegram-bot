@@ -19,21 +19,41 @@ import { CALLBACK, EMOJI, PAGINATION } from '../config/constants.js';
  * @param {number}  movieId
  * @returns {object} Telegram InlineKeyboardMarkup
  */
-export function buildQualityKeyboard(files, movieId) {
+export function buildQualityKeyboard(files, movieId, page = 1) {
 	if (!files || files.length === 0) {
 		return { inline_keyboard: [[{ text: 'No files available', callback_data: CALLBACK.NOOP }]] };
 	}
 
+	const perPage = 10;
+	const totalPages = Math.ceil(files.length / perPage);
+	const safePage = Math.max(1, Math.min(page, totalPages));
+	const startIndex = (safePage - 1) * perPage;
+	const endIndex = startIndex + perPage;
+	const limitedFiles = files.slice(startIndex, endIndex);
+
 	// One button per file — show the actual filename so users know exactly what they're downloading
-	const rows = files.map((file) => {
+	const rows = limitedFiles.map((file) => {
 		const size = file.size ? `[${file.size}] ` : '';
 		const rawName = file.fileName || file.qualityLabel || 'Unknown File';
-		// Telegram button text max is ~200 chars; cap at 80 to keep UI clean
-		const label = `${size}${rawName}`.slice(0, 80);
+		// Telegram button text max is ~200 chars; cap at 180 to keep UI clean
+		const label = `${size}${rawName}`.slice(0, 180);
 		return [{ text: label, callback_data: `${CALLBACK.GET_FILE}:${file.id}` }];
 	});
 
-	// Single close button (no Movie Info)
+	// Pagination row: PAGE | 1/totalPages | NEXT ⇒
+	if (totalPages > 1) {
+		const navRow = [];
+		if (safePage > 1) navRow.push({ text: '⇐ PREV', callback_data: `${CALLBACK.GET_QUALITY}:${movieId}:${safePage - 1}` });
+		else navRow.push({ text: '—', callback_data: CALLBACK.NOOP });
+
+		navRow.push({ text: `${safePage}/${totalPages}`, callback_data: CALLBACK.NOOP });
+
+		if (safePage < totalPages) navRow.push({ text: 'NEXT ⇒', callback_data: `${CALLBACK.GET_QUALITY}:${movieId}:${safePage + 1}` });
+		else navRow.push({ text: '—', callback_data: CALLBACK.NOOP });
+		rows.push(navRow);
+	}
+
+	// Single close button
 	rows.push([{ text: `${EMOJI.CROSS} Close`, callback_data: CALLBACK.CLOSE }]);
 
 	return { inline_keyboard: rows };
@@ -80,6 +100,7 @@ export function buildMovieInfoKeyboard(movieId, trailerUrl, imdbUrl) {
  * @returns {object}
  */
 export function buildSearchResultsKeyboard(movies, query, page, totalPages) {
+	const safeQuery = String(query || '').slice(0, 40);
 	const rows = movies.map((movie) => {
 		// Build label: show file size if available, then title + year
 		const sizeLabel = movie.totalSize ? `[${movie.totalSize}] ` : '';
@@ -100,7 +121,7 @@ export function buildSearchResultsKeyboard(movies, query, page, totalPages) {
 		if (page < totalPages) {
 			navRow.push({
 				text: 'NEXT ⇒',
-				callback_data: `${CALLBACK.PAGE}:${page + 1}`,
+				callback_data: `${CALLBACK.PAGE}:${page + 1}:${safeQuery}`,
 			});
 		} else {
 			navRow.push({ text: '—', callback_data: CALLBACK.NOOP });
@@ -109,7 +130,7 @@ export function buildSearchResultsKeyboard(movies, query, page, totalPages) {
 	} else if (page > 1) {
 		// Only back navigation
 		rows.push([
-			{ text: '⇐ PREV', callback_data: `${CALLBACK.PAGE}:${page - 1}` },
+			{ text: '⇐ PREV', callback_data: `${CALLBACK.PAGE}:${page - 1}:${safeQuery}` },
 			{ text: `${page}/${totalPages}`, callback_data: CALLBACK.NOOP },
 			{ text: '—', callback_data: CALLBACK.NOOP },
 		]);
@@ -119,9 +140,11 @@ export function buildSearchResultsKeyboard(movies, query, page, totalPages) {
 	if (page > 1 && totalPages > 1) {
 		// Replace nav row to include ⇐ PREV
 		rows[rows.length - 1] = [
-			{ text: '⇐ PREV', callback_data: `${CALLBACK.PAGE}:${page - 1}` },
+			{ text: '⇐ PREV', callback_data: `${CALLBACK.PAGE}:${page - 1}:${safeQuery}` },
 			{ text: `${page}/${totalPages}`, callback_data: CALLBACK.NOOP },
-			page < totalPages ? { text: 'NEXT ⇒', callback_data: `${CALLBACK.PAGE}:${page + 1}` } : { text: '—', callback_data: CALLBACK.NOOP },
+			page < totalPages
+				? { text: 'NEXT ⇒', callback_data: `${CALLBACK.PAGE}:${page + 1}:${safeQuery}` }
+				: { text: '—', callback_data: CALLBACK.NOOP },
 		];
 	}
 

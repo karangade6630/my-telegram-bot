@@ -26,6 +26,7 @@ export class UpdateRouter {
 			deps.movieFileRepo,
 			deps.fileRepo,
 			deps.logger,
+			deps.config?.queue,
 		);
 		this.callbackHandler = new CallbackHandler(
 			deps.telegramCallback,
@@ -35,6 +36,7 @@ export class UpdateRouter {
 			deps.movieRepo,
 			deps.userRepo,
 			deps.config.queue,
+			deps.searchService,
 		);
 		this.inlineHandler = new InlineHandler(deps.telegramInline, deps.searchService, deps.config.botUsername);
 		this.channelPostHandler = new ChannelPostHandler(deps.movieIndexService);
@@ -79,7 +81,7 @@ export class UpdateRouter {
 			if (command) {
 				const args = extractCommandArgs(text);
 				const isAdminUser = user.isAdmin || (this.deps.config?.adminIds && this.deps.config.adminIds.has(String(from.id)));
-				if (isAdminUser && ['/stats', '/broadcast', '/ban', '/unban', '/movies', '/users', '/resetdb'].includes(command)) {
+				if (isAdminUser && ['/stats', '/broadcast', '/ban', '/unban', '/movies', '/users', '/resetdb', '/delete_file', '/delete_movie', '/delete_all_files', '/deleteall'].includes(command)) {
 					return await this.adminHandler.handleAdminCommand(chatId, command, args, user);
 				}
 				return await this.commandHandler.handleCommand(chatId, command, args, user);

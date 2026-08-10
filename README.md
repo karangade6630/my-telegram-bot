@@ -75,6 +75,9 @@ Here is a full breakdown of all supported Telegram commands, their parameters, r
 | `/broadcast` | Admin | `<message_text>` | Admins Only | Initiates a queue-backed mass broadcast announcement to all non-banned users in the system. |
 | `/ban` | Admin | `<user_id> [reason]` | Admins Only | Blacklists a user by their Telegram User ID, preventing them from running searches or receiving files. |
 | `/unban` | Admin | `<user_id>` | Admins Only | Removes a user from the blacklist and restores their bot access. |
+| `/delete_file` | Admin | `<id_or_telegram_id>` | Admins Only | Delete a specific file record from the database. |
+| `/delete_movie` | Admin | `<id_or_title>` | Admins Only | Delete a specific movie and its linked files. |
+| `/delete_all_files` / `/deleteall` | Admin | None | Admins Only | Purge all movies, files, and file mappings from the database in a single step while preserving user accounts, settings, and database schema. |
 
 ---
 
@@ -258,6 +261,9 @@ Invoke-RestMethod -Uri "https://api.telegram.org/bot<YOUR_BOT_TOKEN>/setWebhook"
 - **/unban `<user_id>`**: Unbans a user.
 - **/movies**: Displays total indexed movies and top recent entries.
 - **/users**: Displays user statistics.
+- **/delete_file `<id_or_telegram_id>`**: Delete a specific file record from the database.
+- **/delete_movie `<id_or_title>`**: Delete a specific movie and its linked files.
+- **/delete_all_files** / **/deleteall**: Purge all movies, files, and file mappings from the database in a single step while preserving user accounts, settings, and database schema.
 
 ---
 

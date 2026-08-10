@@ -17,14 +17,12 @@
 			"binding": "DB",
 			"database_name": "movie_bot",
 			"database_id": "7de6af6b-6016-4847-a544-1c9f8cb8fbdf",
-			"remote": true,
 		},
 	],
 	"kv_namespaces": [
 		{
 			"binding": "KV",
 			"id": "e486cd8dfd53426c8932cb15c6122552",
-			"remote": true,
 		},
 	],
 	"queues": {

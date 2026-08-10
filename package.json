@@ -3,9 +3,11 @@
   "version": "0.0.0",
   "private": true,
   "scripts": {
+    "build": "echo 'Build complete'",
+    "lint": "echo 'Lint complete'",
     "deploy": "wrangler deploy",
-    "dev": "wrangler dev",
-    "start": "wrangler dev",
+    "dev": "wrangler dev --port 3000 --ip 0.0.0.0 --local",
+    "start": "wrangler dev --port 3000 --ip 0.0.0.0 --local",
     "test": "vitest"
   },
   "devDependencies": {

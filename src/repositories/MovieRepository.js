@@ -175,7 +175,7 @@ export class MovieRepository extends BaseRepository {
    */
   async upsert(data) {
     const now = nowISO();
-    const result = await this.run(
+    await this.run(
       `INSERT INTO movies (slug, title, original_title, year, type, language, genre, description,
          director, cast, country, runtime, content_rating,
          poster_url, popularity_score, search_count, created_at, updated_at)
@@ -194,7 +194,6 @@ export class MovieRepository extends BaseRepository {
         now, now,
       ]
     );
-    if (result.meta?.last_row_id) return result.meta.last_row_id;
     const existing = await this.findBySlug(data.slug);
     return existing?.id;
   }

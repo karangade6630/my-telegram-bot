@@ -166,6 +166,7 @@ export const KV_KEYS = Object.freeze({
 // ─────────────────────────────────────────────────────────────
 
 export const OMDB_BASE_URL = 'https://www.omdbapi.com/';
+export const POSTER_API_URL = 'https://symmetrical-winner-x5pv496pqvvqfv5g7-3000.app.github.dev/api/movies';
 export const IMDB_SUGGEST = 'https://v3.sg.media-imdb.com/suggestion';
 export const IMDB_TITLE_BASE = 'https://www.imdb.com/title';
 export const IMDB_FIND_BASE = 'https://www.imdb.com/find';
@@ -204,10 +205,10 @@ export const PARSE_MODE = Object.freeze({
 export const SEARCH = Object.freeze({
 	DEFAULT_LIMIT: 10,
 	MAX_LIMIT: 20,
-	MIN_QUERY_LENGTH: 2,
+	MIN_QUERY_LENGTH: 3,
 	MAX_QUERY_LENGTH: 100,
 	FUZZY_THRESHOLD: 0.6, // Levenshtein similarity ≥ 0.6 qualifies
-	RESULTS_PER_PAGE: 5,
+	RESULTS_PER_PAGE: 10,
 	INLINE_RESULTS_LIMIT: 8,
 });
 
@@ -382,7 +383,7 @@ export const FILENAME_PATTERNS = Object.freeze({
 
 export const PAGINATION = Object.freeze({
 	DEFAULT_PAGE: 1,
-	RESULTS_PER_PAGE: 5,
+	RESULTS_PER_PAGE: 10,
 	MAX_PAGES: 20,
 });
 

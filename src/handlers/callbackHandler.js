@@ -35,16 +35,58 @@ export class CallbackHandler {
 	async sendFileMessage(chatId, queryId, file, movie = null) {
 		await this.telegramCallback.toast(queryId, '📤 Sending file…');
 
-		const title = movie?.title || file.fileName || 'Movie File';
-		const fileCaption = [
-			`🎬 <b>${escapeHtml(title)}</b>`,
-			file.qualityLabel ? `📡 Quality: ${escapeHtml(file.qualityLabel)}` : '',
-			file.size ? `💾 Size: ${escapeHtml(file.size)}` : '',
-		]
-			.filter(Boolean)
-			.join('\n');
+		const fileCaption = file.fileName || movie?.title || 'File';
 
-		const fileMsg = await this.telegramMedia.sendFile(chatId, file.telegramFileId, file.fileType, fileCaption);
+		const channelButtons = {
+			inline_keyboard: [
+				[
+					{ text: '📢 Channel 1', url: 'https://t.me/movie_time_v1' },
+					{ text: '📢 Channel 2', url: 'https://t.me/+_OhMUT6XxBkwNWFl' },
+				],
+			],
+		};
+
+		let fileMsg = null;
+
+		// 1. Try copyMessage from channel post (most reliable in Telegram)
+		if (file.channelId && file.messageId) {
+			fileMsg = await this.telegramMedia._call('copyMessage', {
+				chat_id: chatId,
+				from_chat_id: file.channelId,
+				message_id: file.messageId,
+				caption: fileCaption,
+				parse_mode: 'HTML',
+				reply_markup: channelButtons,
+			});
+
+			if (!fileMsg?.ok) {
+				fileMsg = await this.telegramMedia._call('copyMessage', {
+					chat_id: chatId,
+					from_chat_id: file.channelId,
+					message_id: file.messageId,
+					reply_markup: channelButtons,
+				});
+			}
+
+			if (!fileMsg?.ok) {
+				fileMsg = await this.telegramMedia._call('forwardMessage', {
+					chat_id: chatId,
+					from_chat_id: file.channelId,
+					message_id: file.messageId,
+				});
+			}
+		}
+
+		// 2. Fallback to sending by telegramFileId
+		if (!fileMsg?.ok) {
+			fileMsg = await this.telegramMedia.sendFile(chatId, file.telegramFileId, file.fileType, fileCaption, {
+				reply_markup: channelButtons,
+			});
+		}
+
+		if (!fileMsg?.ok) {
+			fileMsg = await this.telegramMedia.sendDocument(chatId, file.telegramFileId, fileCaption, { reply_markup: channelButtons });
+		}
 
 		const delMinutes = Math.round((AUTO_DELETE_SECONDS ?? 300) / 60);
 		const notifMsg = await this.telegramMedia._call('sendMessage', {
@@ -57,13 +99,25 @@ export class CallbackHandler {
 		if (fileMsg?.ok && fileMsg.result?.message_id) idsToDelete.push(fileMsg.result.message_id);
 		if (notifMsg?.ok && notifMsg.result?.message_id) idsToDelete.push(notifMsg.result.message_id);
 
-		if (idsToDelete.length && this.queue) {
-			try {
-				await this.queue.send(
-					{ type: 'delete_message', payload: { chatId, messageIds: idsToDelete } },
-					{ delaySeconds: AUTO_DELETE_SECONDS ?? 300 },
-				);
-			} catch {}
+		if (idsToDelete.length) {
+			if (this.queue) {
+				try {
+					await this.queue.send(
+						{ type: 'delete_message', payload: { chatId, messageIds: idsToDelete } },
+						{ delaySeconds: AUTO_DELETE_SECONDS ?? 300 },
+					);
+				} catch {}
+			}
+			setTimeout(
+				async () => {
+					for (const msgId of idsToDelete) {
+						try {
+							await this.telegramMedia._call('deleteMessage', { chat_id: chatId, message_id: msgId });
+						} catch {}
+					}
+				},
+				(AUTO_DELETE_SECONDS ?? 300) * 1000,
+			);
 		}
 	}
 
@@ -248,11 +302,16 @@ export class CallbackHandler {
 			return;
 		}
 
-		// ── Pagination Callback (pg:page) ──────────────────────
+		// ── Pagination Callback (pg:page:query) ──────────────────────
 		if (action === CALLBACK.PAGE) {
 			const parts = data.split(':');
 			const targetPage = parseInt(parts[1]) || 1;
-			const queryStr = extractQueryFromMessage(callbackQuery.message?.text || '');
+			let queryStr = parts.slice(2).join(':').trim();
+
+			if (!queryStr) {
+				const messageText = callbackQuery.message?.text || callbackQuery.message?.caption || '';
+				queryStr = extractQueryFromMessage(messageText);
+			}
 
 			if (!queryStr) {
 				await this.telegramCallback.answer(queryId);
@@ -277,13 +336,22 @@ export class CallbackHandler {
 					);
 
 					if (messageId) {
-						await this.telegramMedia._call('editMessageText', {
+						let editRes = await this.telegramMedia._call('editMessageText', {
 							chat_id: chatId,
 							message_id: messageId,
 							text: header,
 							parse_mode: 'HTML',
 							reply_markup: keyboard,
 						});
+						if (!editRes?.ok) {
+							await this.telegramMedia._call('editMessageCaption', {
+								chat_id: chatId,
+								message_id: messageId,
+								caption: header,
+								parse_mode: 'HTML',
+								reply_markup: keyboard,
+							});
+						}
 					}
 				}
 			}
@@ -294,12 +362,13 @@ export class CallbackHandler {
 		// ── Quality selection ────────────────────────────────────────
 		if (action === CALLBACK.GET_QUALITY) {
 			const movieId = parseInt(id);
+			const page = parseInt(data.split(':')[2]) || 1;
 			if (!movieId) {
 				await this.telegramCallback.answer(queryId);
 				return;
 			}
 			const files = await this.fileRepo.findByMovieId(movieId);
-			const keyboard = buildQualityKeyboard(files, movieId);
+			const keyboard = buildQualityKeyboard(files, movieId, page);
 			if (messageId) {
 				await this.telegramMedia._call('editMessageReplyMarkup', {
 					chat_id: chatId,
@@ -346,24 +415,21 @@ export function extractQueryFromMessage(text) {
 	const raw = String(text).replace(/\r\n/g, '\n').trim();
 	const lines = raw.split('\n');
 
+	// Line 1 is "Tʜᴇ Rᴇsᴜʟᴛs Fᴏʀ ☞ <query>"
 	for (const line of lines) {
 		const trimmed = line.trim();
 		if (!trimmed) continue;
 
-		const taggedMatch = trimmed.match(/☞\s*<b>(.*?)<\/b>/i);
-		if (taggedMatch?.[1]) {
-			return decodeHtmlEntities(taggedMatch[1]).trim();
+		if (trimmed.includes('☞')) {
+			const idx = trimmed.indexOf('☞');
+			const candidate = trimmed
+				.slice(idx + 1)
+				.replace(/<[^>]*>/g, '')
+				.trim();
+			if (candidate) {
+				return decodeHtmlEntities(candidate);
+			}
 		}
-
-		const fallbackMatch = trimmed.match(/☞\s*(.+)$/i);
-		if (fallbackMatch?.[1]) {
-			return decodeHtmlEntities(fallbackMatch[1]).trim();
-		}
-	}
-
-	const broadMatch = raw.match(/(?:the\s+results\s+for|tʜᴇ\s+rᴇsᴜʟᴛs\s+fᴏʀ)[\s\S]*?☞\s*<b>(.*?)<\/b>/i);
-	if (broadMatch?.[1]) {
-		return decodeHtmlEntities(broadMatch[1]).trim();
 	}
 
 	return '';

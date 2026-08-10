@@ -121,11 +121,24 @@ export class TelegramMedia {
    * @returns {Promise<object>}
    */
   async sendFile(chatId, fileId, fileType = 'document', caption = '', extra = {}) {
+    let res;
     switch (fileType) {
-      case 'video': return this.sendVideo(chatId, fileId, caption, extra);
-      case 'audio': return this.sendAudio(chatId, fileId, caption, extra);
-      default:      return this.sendDocument(chatId, fileId, caption, extra);
+      case 'video':
+        res = await this.sendVideo(chatId, fileId, caption, extra);
+        break;
+      case 'audio':
+        res = await this.sendAudio(chatId, fileId, caption, extra);
+        break;
+      default:
+        res = await this.sendDocument(chatId, fileId, caption, extra);
+        break;
     }
+    // Fallback: If sendVideo or sendAudio fails (e.g. wrong file identifier for document file_ids), fallback to sendDocument
+    if (!res?.ok && fileType !== 'document') {
+      logger.warn(`sendFile with fileType=${fileType} failed (${res?.description || 'unknown error'}), falling back to sendDocument`);
+      res = await this.sendDocument(chatId, fileId, caption, extra);
+    }
+    return res;
   }
 
   // ─── Internal ────────────────────────────────────────────────

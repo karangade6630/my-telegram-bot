@@ -20,6 +20,7 @@ export class MovieFileRepository extends BaseRepository {
    * @returns {Promise<void>}
    */
   async link(movieId, fileId, isPrimary = false, sortOrder = 0) {
+    if (!movieId || !fileId) return;
     await this.run(
       `INSERT OR IGNORE INTO movie_files (movie_id, file_id, is_primary, sort_order)
        VALUES (?, ?, ?, ?)`,

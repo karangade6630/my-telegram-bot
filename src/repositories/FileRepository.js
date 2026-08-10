@@ -90,7 +90,11 @@ export class FileRepository extends BaseRepository {
         nowISO(), nowISO(),
       ]
     );
-    return result.meta?.last_row_id ?? null;
+    if (result.meta?.changes > 0 && result.meta?.last_row_id) {
+      return result.meta.last_row_id;
+    }
+    const existing = await this.findByUniqueId(data.unique_id);
+    return existing?.id ?? null;
   }
 
   /**

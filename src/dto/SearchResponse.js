@@ -55,7 +55,7 @@ export class SearchResponse {
     }
     lines.push(`<b>ʀᴇsᴜʟᴛ sʜᴏᴡ ɪɴ</b> ☞ <b>${sec} sᴇᴄᴏɴᴅs</b>`);
     lines.push(``);
-    lines.push(`<b>ᴘᴏᴡᴇʀᴇᴅ ʙʏ</b> ☞ : <b>None</b>`);
+    lines.push(`<b>ᴘᴏᴡᴇʀᴇᴅ ʙʏ</b> ☞ : <a href="https://t.me/karangade07">@karangade07</a>`);
     lines.push(``);
     lines.push(`⚠️ <b>ᴀꜰᴛᴇʀ 5 ᴍɪɴᴜᴛᴇs ᴛʜɪs ᴍᴇssᴀɢᴇ ᴡɪʟʟ ʙᴇ ᴀᴜᴛᴏᴍᴀᴛɪᴄᴀʟʟʏ ᴅᴇʟᴇᴛᴇᴅ</b>`);
 

@@ -1,0 +1,6 @@
+{
+  "name": "My Telegram Bot",
+  "description": "Telegram Bot repository cloned from karangade6630/my-telegram-bot",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}

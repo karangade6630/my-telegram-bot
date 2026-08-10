@@ -10,6 +10,7 @@ import { Movie } from '../models/Movie.js';
 import { File as FileModel } from '../models/File.js';
 import { MovieIndexed } from '../events/MovieIndexed.js';
 import { Logger } from '../utils/logger.js';
+import { POSTER_API_URL } from '../config/constants.js';
 
 const logger = new Logger('MovieIndexService');
 
@@ -27,6 +28,31 @@ export class MovieIndexService {
     this.movieFileRepo = movieFileRepo;
     this.channelRepo = channelRepo;
     this.queue = queue;
+  }
+
+  async _fetchPoster(title, fileName) {
+    const searchQueries = [
+      title,
+      fileName,
+      title.replace(/\b[Ss]\d{1,2}[Ee]\d{1,3}\b.*/gi, ''),
+      title.replace(/[\d\s]+$/g, '')
+    ];
+
+    for (const query of [...new Set(searchQueries)].filter(q => q && q.length > 2)) {
+      const cleaned = query.trim().replace(/[._]/g, ' ');
+      const url = `${POSTER_API_URL}?search=${encodeURIComponent(cleaned)}`;
+      logger.info(`Fetching poster for "${title}" (query: "${cleaned}"): ${url}`);
+      try {
+        const response = await fetch(url);
+        const data = await response.json();
+        if (data.success && data.movies && data.movies.length > 0) {
+          return data.movies[0].poster_url;
+        }
+      } catch (error) {
+        logger.warn(`Failed to fetch poster for ${cleaned}:`, error);
+      }
+    }
+    return null;
   }
 
   /**
@@ -48,6 +74,8 @@ export class MovieIndexService {
     }
 
     const movieModel = Movie.fromParsed(parsed);
+    const posterUrl = await this._fetchPoster(parsed.movieTitle, parsed.fileName);
+    if (posterUrl) movieModel.posterUrl = posterUrl;
 
     const movieId = await this.movieRepo.upsert(movieModel.toRow());
 

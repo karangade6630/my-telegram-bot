@@ -9,7 +9,6 @@
  * @module parsers/MovieParser
  */
 
-import { CaptionParser } from './CaptionParser.js';
 import { FilenameParser } from './FilenameParser.js';
 import { slugify }        from '../utils/stringUtils.js';
 import { CONTENT_TYPES }  from '../config/constants.js';
@@ -38,42 +37,46 @@ export class MovieParser {
     const fileSize     = tgFile.file_size ?? null;
     const rawFilename  = tgFile.file_name ?? '';
     const isVideo      = !!message.video || mimeType.startsWith('video/');
+    const caption      = message.caption ?? '';
 
-    // ── Step 2: Parse filename + caption ─────────────────────
-    const caption = message.caption ?? '';
-    const parsed  = CaptionParser.parse(caption, rawFilename);
+    // ── Step 2: Get raw title as-is from file/caption ─────────
+    let movieTitle = rawFilename.trim();
+    if (!movieTitle && caption) {
+      movieTitle = caption.split('\n')[0].trim();
+    }
+    if (!movieTitle) {
+      movieTitle = 'Unknown';
+    }
 
-    // ── Step 3: Determine content type ───────────────────────
-    const type = MovieParser._detectType(parsed);
+    const fileData = FilenameParser.parse(rawFilename || movieTitle);
+    const type     = MovieParser._detectType({ movieTitle: fileData.movieTitle, season: fileData?.season, episode: fileData?.episode, rawCaption: caption });
+    const slug     = slugify(fileData.movieTitle);
 
-    // ── Step 4: Build slug ───────────────────────────────────
-    const slug = slugify(`${parsed.movieTitle}-${parsed.year ?? ''}`);
-
-    // ── Step 5: Assemble result ──────────────────────────────
+    // ── Step 3: Assemble result ──────────────────────────────
     return {
-      // Movie-level data
+      // Movie-level data (title is strictly as-is without formatting)
       slug,
-      movieTitle:  parsed.movieTitle,
-      year:        parsed.year,
+      movieTitle: fileData.movieTitle,
+      year:        fileData?.year ?? null,
       type,
-      language:    parsed.language,
-      imdbRating:  parsed.imdbRating,
+      language:    fileData?.language ?? null,
+      imdbRating:  null,
 
       // File-level data
       telegramFileId: fileId,
       uniqueId:       fileUniqueId,
       fileType:       isVideo ? 'video' : 'document',
-      fileName:       rawFilename || null,
+      fileName:       rawFilename || movieTitle,
       mimeType,
-      quality:        parsed.quality,
-      codec:          parsed.codec,
-      audioTracks:    parsed.audioTracks,
-      isDualAudio:    parsed.isDualAudio,
-      isHevc:         parsed.isHevc,
-      isHdr:          parsed.isHdr,
-      season:         parsed.season,
-      episode:        parsed.episode,
-      size:           parsed.size,
+      quality:        fileData?.quality ?? null,
+      codec:          fileData?.codec ?? null,
+      audioTracks:    fileData?.audioTracks ?? null,
+      isDualAudio:    fileData?.isDualAudio ?? false,
+      isHevc:         fileData?.isHevc ?? false,
+      isHdr:          fileData?.isHdr ?? false,
+      season:         fileData?.season ?? null,
+      episode:        fileData?.episode ?? null,
+      size:           fileData?.size ?? null,
       sizeBytes:      fileSize,
       caption:        caption || null,
       channelId:      String(message.chat?.id ?? ''),

@@ -24,6 +24,17 @@ export class QueueWorker {
       try {
         if (type === 'broadcast_chunk') {
           await broadcastJob.run(message.body);
+        } else if (type === 'delete_message') {
+          const { chatId, messageIds } = payload || {};
+          if (chatId && Array.isArray(messageIds)) {
+            for (const msgId of messageIds) {
+              try {
+                await telegramMessages.deleteMessage(chatId, msgId);
+              } catch (e) {
+                logger.warn(`Failed to delete message ${msgId} in chat ${chatId}: ${e.message}`);
+              }
+            }
+          }
         } else if (type === 'analytics') {
           // Analytics queue handling
         }
