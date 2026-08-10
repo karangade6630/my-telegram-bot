@@ -22,6 +22,27 @@ export default {
 			return await handleRecentMoviesRequest(request, env);
 		}
 
+		// Admin API Routes
+		if (request.method === 'POST' && url.pathname === '/api/admin/login') {
+			return await handleAdminLogin(request, env);
+		}
+
+		if (request.method === 'GET' && url.pathname === '/api/admin/movies') {
+			return await handleAdminListMovies(request, env);
+		}
+
+		if (request.method === 'POST' && url.pathname === '/api/admin/movies/update') {
+			return await handleAdminUpdateMovie(request, env);
+		}
+
+		if (request.method === 'POST' && url.pathname === '/api/admin/movies/delete') {
+			return await handleAdminDeleteMovie(request, env);
+		}
+
+		if (request.method === 'GET' && url.pathname === '/api/admin/omdb-search') {
+			return await handleAdminOmdbSearch(request, env);
+		}
+
 		if (request.method === 'POST' && url.pathname === '/webhook') {
 			return await handleWebhookRequest(request, env);
 		}
@@ -205,5 +226,190 @@ async function handleRecentMoviesRequest(request, env) {
 		return Response.json({ ok: false, movies: [] });
 	}
 }
+
+async function handleAdminListMovies(request, env) {
+	if (!env.DB) {
+		return Response.json({ ok: false, message: 'Database unavailable' }, { status: 503 });
+	}
+	const url = new URL(request.url);
+	const page = parseInt(url.searchParams.get('page') || '1', 10);
+	const limit = parseInt(url.searchParams.get('limit') || '10', 10);
+	const search = url.searchParams.get('search') || '';
+	const genre = url.searchParams.get('genre') || '';
+
+	const offset = (page - 1) * limit;
+	const movieRepo = new MovieRepository(env.DB);
+
+	try {
+		const { movies, total } = await movieRepo.listPaginated({ limit, offset, search, genre });
+		const totalPages = Math.ceil(total / limit) || 1;
+
+		return Response.json({
+			ok: true,
+			movies: movies.map((m) => ({
+				id: m.id,
+				slug: m.slug,
+				title: m.title,
+				originalTitle: m.originalTitle,
+				year: m.year,
+				type: m.type,
+				language: m.language,
+				genre: m.genre,
+				description: m.description,
+				director: m.director,
+				cast: m.cast,
+				country: m.country,
+				runtime: m.runtime,
+				contentRating: m.contentRating,
+				imdbRating: m.imdbRating,
+				imdbVotes: m.imdbVotes,
+				imdbId: m.imdbId,
+				posterUrl: m.posterUrl,
+				updatedAt: m.updatedAt,
+			})),
+			total,
+			page,
+			limit,
+			totalPages,
+		});
+	} catch (err) {
+		return Response.json({ ok: false, message: err.message }, { status: 500 });
+	}
+}
+
+async function handleAdminUpdateMovie(request, env) {
+	if (!env.DB) {
+		return Response.json({ ok: false, message: 'Database unavailable' }, { status: 503 });
+	}
+	try {
+		const body = await request.json();
+		if (!body.id) {
+			return Response.json({ ok: false, message: 'Movie ID is required' }, { status: 400 });
+		}
+
+		const movieRepo = new MovieRepository(env.DB);
+		const existing = await movieRepo.findById(body.id);
+		if (!existing) {
+			return Response.json({ ok: false, message: 'Movie not found' }, { status: 404 });
+		}
+
+		const updateData = {};
+		if (body.title !== undefined) updateData.title = body.title;
+		if (body.originalTitle !== undefined) updateData.original_title = body.originalTitle;
+		if (body.year !== undefined) updateData.year = body.year ? parseInt(body.year, 10) : null;
+		if (body.type !== undefined) updateData.type = body.type;
+		if (body.language !== undefined) updateData.language = body.language;
+		if (body.genre !== undefined) updateData.genre = body.genre;
+		if (body.description !== undefined) updateData.description = body.description;
+		if (body.director !== undefined) updateData.director = body.director;
+		if (body.cast !== undefined) updateData.cast = body.cast;
+		if (body.country !== undefined) updateData.country = body.country;
+		if (body.runtime !== undefined) updateData.runtime = body.runtime;
+		if (body.contentRating !== undefined) updateData.content_rating = body.contentRating;
+		if (body.posterUrl !== undefined) updateData.poster_url = body.posterUrl;
+		if (body.imdbRating !== undefined) updateData.imdb_rating = body.imdbRating ? parseFloat(body.imdbRating) : null;
+		if (body.imdbVotes !== undefined) updateData.imdb_votes = body.imdbVotes ? parseInt(body.imdbVotes, 10) : null;
+		if (body.imdbId !== undefined) updateData.imdb_id = body.imdbId;
+		if (body.slug !== undefined) updateData.slug = body.slug;
+
+		await movieRepo.updateMetadata(body.id, updateData);
+		const updatedMovie = await movieRepo.findById(body.id);
+
+		return Response.json({
+			ok: true,
+			message: 'Movie updated successfully',
+			movie: updatedMovie,
+		});
+	} catch (err) {
+		return Response.json({ ok: false, message: err.message }, { status: 500 });
+	}
+}
+
+async function handleAdminDeleteMovie(request, env) {
+	if (!env.DB) {
+		return Response.json({ ok: false, message: 'Database unavailable' }, { status: 503 });
+	}
+	try {
+		const body = await request.json();
+		if (!body.id) {
+			return Response.json({ ok: false, message: 'Movie ID is required' }, { status: 400 });
+		}
+
+		const movieRepo = new MovieRepository(env.DB);
+		await movieRepo.delete(body.id);
+
+		return Response.json({ ok: true, message: 'Movie deleted successfully' });
+	} catch (err) {
+		return Response.json({ ok: false, message: err.message }, { status: 500 });
+	}
+}
+
+async function handleAdminOmdbSearch(request, env) {
+	const url = new URL(request.url);
+	const query = url.searchParams.get('query') || url.searchParams.get('title') || '';
+	const year = url.searchParams.get('year') || null;
+
+	if (!query) {
+		return Response.json({ ok: false, message: 'Search query is required' }, { status: 400 });
+	}
+
+	if (!env.OMDB_API_KEY) {
+		return Response.json({ ok: false, message: 'OMDB API key not configured' }, { status: 500 });
+	}
+
+	try {
+		const omdb = new OmdbService(env.OMDB_API_KEY);
+		const cleanTitle = FilenameParser.cleanMovieTitle(query);
+		const meta = await omdb.fetchMovieMetadata(cleanTitle, year);
+
+		if (!meta) {
+			return Response.json({ ok: false, message: 'No OMDb record found for query: ' + cleanTitle });
+		}
+
+		const posterUrl = meta.imdbId
+			? `https://img.omdbapi.com/?apikey=${env.OMDB_API_KEY}&i=${meta.imdbId}`
+			: null;
+
+		return Response.json({
+			ok: true,
+			result: {
+				title: meta.title || cleanTitle,
+				year: meta.year || year,
+				genre: meta.genre || null,
+				description: meta.description || null,
+				director: meta.directors || null,
+				cast: meta.cast || null,
+				runtime: meta.duration || null,
+				contentRating: meta.contentRating || null,
+				imdbRating: meta.imdbRating || null,
+				imdbVotes: meta.ratingCount || null,
+				imdbId: meta.imdbId || null,
+				posterUrl: posterUrl,
+			},
+		});
+	} catch (err) {
+		return Response.json({ ok: false, message: err.message }, { status: 500 });
+	}
+}
+
+async function handleAdminLogin(request, env) {
+	try {
+		const body = await request.json();
+		const expectedPassword = env.ADMIN_PASSWORD || 'admin123';
+		if (body.password === expectedPassword) {
+			return Response.json({
+				ok: true,
+				message: 'Authentication successful',
+				token: 'admin_session_token_' + Date.now(),
+			});
+		} else {
+			return Response.json({ ok: false, message: 'Invalid admin password' }, { status: 401 });
+		}
+	} catch (err) {
+		return Response.json({ ok: false, message: 'Login failed: ' + err.message }, { status: 500 });
+	}
+}
+
+
 
 

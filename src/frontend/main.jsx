@@ -246,19 +246,54 @@ const DEFAULT_BLOG_POSTS = [
 ];
 
 const App = () => {
-	const [mode, setMode] = useState('loading'); // 'loading' | 'bot_visitor' | 'normal_blog'
+	const [mode, setMode] = useState('loading'); // 'loading' | 'bot_visitor' | 'normal_blog' | 'admin'
 	const [data, setData] = useState(null);
 	const [expiredNotice, setExpiredNotice] = useState(false);
 	const [countdown, setCountdown] = useState(10);
 	const [progress, setProgress] = useState(0);
 
-	// Blog state
+	// Public Blog state
 	const [recentMovies, setRecentMovies] = useState([]);
 	const [searchQuery, setSearchQuery] = useState('');
 	const [activeCategory, setActiveCategory] = useState('All');
 
+	// Admin Auth & LocalStorage State
+	const [isAdminAuthenticated, setIsAdminAuthenticated] = useState(() => {
+		return localStorage.getItem('cinetech_admin_auth') === 'true';
+	});
+	const [adminPasswordInput, setAdminPasswordInput] = useState('');
+	const [adminLoginError, setAdminLoginError] = useState('');
+	const [adminLoginLoading, setAdminLoginLoading] = useState(false);
+
+	// Admin Dashboard state
+	const [adminMovies, setAdminMovies] = useState([]);
+	const [adminTotal, setAdminTotal] = useState(0);
+	const [adminPage, setAdminPage] = useState(1);
+	const [adminTotalPages, setAdminTotalPages] = useState(1);
+	const [adminSearch, setAdminSearch] = useState('');
+	const [adminGenre, setAdminGenre] = useState('');
+	const [adminLoading, setAdminLoading] = useState(false);
+
+	// Edit Modal State
+	const [editingMovie, setEditingMovie] = useState(null);
+	const [editFormData, setEditFormData] = useState({});
+	const [omdbQuery, setOmdbQuery] = useState('');
+	const [omdbStatus, setOmdbStatus] = useState('');
+	const [saveStatus, setSaveStatus] = useState('');
+
 	useEffect(() => {
+		const pathname = window.location.pathname;
 		const searchParams = new URLSearchParams(window.location.search);
+
+		// Check for /admin route
+		if (pathname === '/admin' || searchParams.has('admin')) {
+			setMode('admin');
+			if (isAdminAuthenticated) {
+				loadAdminMovies(1, '', '');
+			}
+			return;
+		}
+
 		const fileId = searchParams.get('fileId');
 		const movieId = searchParams.get('movieId');
 		const t = searchParams.get('t');
@@ -312,6 +347,179 @@ const App = () => {
 				}
 			})
 			.catch(() => {});
+	};
+
+	// Admin Password Login Verification
+	const handleAdminLoginSubmit = (e) => {
+		e.preventDefault();
+		if (!adminPasswordInput) return;
+
+		setAdminLoginLoading(true);
+		setAdminLoginError('');
+
+		fetch('/api/admin/login', {
+			method: 'POST',
+			headers: { 'Content-Type': 'application/json' },
+			body: JSON.stringify({ password: adminPasswordInput }),
+		})
+			.then((res) => res.json())
+			.then((resData) => {
+				setAdminLoginLoading(false);
+				if (resData.ok) {
+					setIsAdminAuthenticated(true);
+					localStorage.setItem('cinetech_admin_auth', 'true');
+					setAdminPasswordInput('');
+					loadAdminMovies(1, '', '');
+				} else {
+					setAdminLoginError('❌ Invalid password. Default admin password is admin123');
+				}
+			})
+			.catch((err) => {
+				setAdminLoginLoading(false);
+				setAdminLoginError(`❌ Login error: ${err.message}`);
+			});
+	};
+
+	// Admin Logout
+	const handleAdminLogout = () => {
+		setIsAdminAuthenticated(false);
+		localStorage.removeItem('cinetech_admin_auth');
+		setAdminPasswordInput('');
+		setAdminLoginError('');
+	};
+
+	const loadAdminMovies = (page = 1, search = '', genre = '') => {
+		setAdminLoading(true);
+		const url = `/api/admin/movies?page=${page}&limit=10&search=${encodeURIComponent(search)}&genre=${encodeURIComponent(genre)}`;
+		fetch(url)
+			.then((res) => res.json())
+			.then((resData) => {
+				setAdminLoading(false);
+				if (resData.ok) {
+					setAdminMovies(resData.movies || []);
+					setAdminTotal(resData.total || 0);
+					setAdminPage(resData.page || 1);
+					setAdminTotalPages(resData.totalPages || 1);
+				}
+			})
+			.catch(() => {
+				setAdminLoading(false);
+			});
+	};
+
+	// Handle Admin Search & Genre Filter
+	const handleAdminSearchChange = (e) => {
+		const val = e.target.value;
+		setAdminSearch(val);
+		loadAdminMovies(1, val, adminGenre);
+	};
+
+	const handleAdminGenreChange = (e) => {
+		const val = e.target.value;
+		setAdminGenre(val);
+		loadAdminMovies(1, adminSearch, val);
+	};
+
+	const handleAdminPageChange = (newPage) => {
+		if (newPage < 1 || newPage > adminTotalPages) return;
+		loadAdminMovies(newPage, adminSearch, adminGenre);
+	};
+
+	// Open Edit Modal
+	const handleOpenEdit = (movie) => {
+		setEditingMovie(movie);
+		setEditFormData({ ...movie });
+		setOmdbQuery(movie.title || '');
+		setOmdbStatus('');
+		setSaveStatus('');
+	};
+
+	// Close Edit Modal
+	const handleCloseEdit = () => {
+		setEditingMovie(null);
+		setEditFormData({});
+	};
+
+	// Search OMDb and Auto-Fill Form
+	const handleOmdbSearch = () => {
+		if (!omdbQuery.trim()) return;
+		setOmdbStatus('🔍 Searching OMDb API...');
+		const url = `/api/admin/omdb-search?query=${encodeURIComponent(omdbQuery)}&year=${editFormData.year || ''}`;
+		fetch(url)
+			.then((res) => res.json())
+			.then((resData) => {
+				if (resData.ok && resData.result) {
+					const meta = resData.result;
+					setEditFormData((prev) => ({
+						...prev,
+						title: meta.title || prev.title,
+						year: meta.year || prev.year,
+						genre: meta.genre || prev.genre,
+						description: meta.description || prev.description,
+						director: meta.director || prev.director,
+						cast: meta.cast || prev.cast,
+						runtime: meta.runtime || prev.runtime,
+						contentRating: meta.contentRating || prev.contentRating,
+						imdbRating: meta.imdbRating || prev.imdbRating,
+						imdbVotes: meta.imdbVotes || prev.imdbVotes,
+						imdbId: meta.imdbId || prev.imdbId,
+						posterUrl: meta.posterUrl || prev.posterUrl,
+					}));
+					setOmdbStatus('✅ OMDb metadata auto-filled successfully!');
+				} else {
+					setOmdbStatus(`⚠️ ${resData.message || 'No OMDb metadata found.'}`);
+				}
+			})
+			.catch((err) => {
+				setOmdbStatus(`❌ Error searching OMDb: ${err.message}`);
+			});
+	};
+
+	// Save Movie Updates
+	const handleSaveMovie = (e) => {
+		e.preventDefault();
+		setSaveStatus('💾 Saving updates to D1 Database...');
+		fetch('/api/admin/movies/update', {
+			method: 'POST',
+			headers: { 'Content-Type': 'application/json' },
+			body: JSON.stringify(editFormData),
+		})
+			.then((res) => res.json())
+			.then((resData) => {
+				if (resData.ok) {
+					setSaveStatus('✅ Saved successfully!');
+					setTimeout(() => {
+						handleCloseEdit();
+						loadAdminMovies(adminPage, adminSearch, adminGenre);
+					}, 800);
+				} else {
+					setSaveStatus(`❌ Save failed: ${resData.message}`);
+				}
+			})
+			.catch((err) => {
+				setSaveStatus(`❌ Save failed: ${err.message}`);
+			});
+	};
+
+	// Delete Movie
+	const handleDeleteMovie = (movieId, movieTitle) => {
+		if (!window.confirm(`Are you sure you want to delete "${movieTitle}"?`)) return;
+		fetch('/api/admin/movies/delete', {
+			method: 'POST',
+			headers: { 'Content-Type': 'application/json' },
+			body: JSON.stringify({ id: movieId }),
+		})
+			.then((res) => res.json())
+			.then((resData) => {
+				if (resData.ok) {
+					loadAdminMovies(adminPage, adminSearch, adminGenre);
+				} else {
+					alert(`Delete failed: ${resData.message}`);
+				}
+			})
+			.catch((err) => {
+				alert(`Delete failed: ${err.message}`);
+			});
 	};
 
 	// 10-second countdown timer for bot visitors
@@ -371,7 +579,7 @@ const App = () => {
 	const movie = data?.movie;
 	const file = data?.file;
 
-	// Combine DB movies and default editorial posts for the blog grid
+	// Combine DB movies and default editorial posts for the public blog grid
 	const displayedPosts =
 		recentMovies.length > 0
 			? recentMovies.map((m) => ({
@@ -389,7 +597,7 @@ const App = () => {
 				}))
 			: DEFAULT_BLOG_POSTS;
 
-	// Filter posts based on search query and category pill
+	// Filter posts based on search query and category pill for public blog
 	const filteredPosts = displayedPosts.filter((post) => {
 		const matchesSearch =
 			searchQuery === '' ||
@@ -410,390 +618,919 @@ const App = () => {
 			{/* Top Header */}
 			<header className="blog-header">
 				<div className="header-container">
-					<a href="/" className="logo-brand">
+					<a
+						href="/"
+						className="logo-brand"
+						onClick={(e) => {
+							e.preventDefault();
+							window.history.pushState({}, '', '/');
+							setMode('normal_blog');
+							loadRecentMovies();
+						}}
+					>
 						<div className="logo-icon">🎬</div>
 						<span>CineTech Daily</span>
 					</a>
 
-					<div className="header-search">
-						<span>🔍</span>
-						<input
-							type="text"
-							placeholder="Search movies, encodings..."
-							value={searchQuery}
-							onChange={(e) => setSearchQuery(e.target.value)}
-						/>
-					</div>
+					{mode !== 'admin' && (
+						<div className="header-search">
+							<span>🔍</span>
+							<input
+								type="text"
+								placeholder="Search movies, encodings..."
+								value={searchQuery}
+								onChange={(e) => setSearchQuery(e.target.value)}
+							/>
+						</div>
+					)}
 
 					<ul className="nav-links">
 						<li>
-							<a href="/" className="active">
+							<a
+								href="/"
+								className={mode === 'normal_blog' ? 'active' : ''}
+								onClick={(e) => {
+									e.preventDefault();
+									window.history.pushState({}, '', '/');
+									setMode('normal_blog');
+									loadRecentMovies();
+								}}
+							>
 								Home
 							</a>
 						</li>
 						<li>
-							<a href="#blog-grid">Movies &amp; Shows</a>
+							<a
+								href="/#blog-grid"
+								onClick={() => {
+									if (mode !== 'normal_blog') setMode('normal_blog');
+								}}
+							>
+								Movies &amp; Shows
+							</a>
 						</li>
 						<li>
-							<a href="#blog-grid">Streaming Tech</a>
-						</li>
-						<li>
-							<a href="#blog-grid">Reviews</a>
-						</li>
-						<li>
-							<a href="#about">About</a>
+							<a
+								href="/admin"
+								className={mode === 'admin' ? 'active' : ''}
+								onClick={(e) => {
+									e.preventDefault();
+									window.history.pushState({}, '', '/admin');
+									setMode('admin');
+									if (isAdminAuthenticated) {
+										loadAdminMovies(1, '', '');
+									}
+								}}
+							>
+								⚙️ Admin
+							</a>
 						</li>
 					</ul>
 				</div>
 			</header>
 
-			{/* Hero Banner for normal blog view */}
-			{mode === 'normal_blog' && (
-				<section className="hero-banner">
-					<div className="hero-content">
-						<div className="hero-badge">
-							<span>✨</span> Premier Digital Cinema &amp; Media Tech Journal
-						</div>
-						<h1 className="hero-title">High-Bitrate Cinema &amp; Cloud Archiving</h1>
-						<p className="hero-subtitle">
-							In-depth reviews, codec compression benchmarks, AV1 vs HEVC analysis, and master file metadata updated daily.
-						</p>
-						<div className="hero-stats">
-							<div className="stat-item">
-								<div className="stat-value">10,000+</div>
-								<div className="stat-label">Indexed Releases</div>
+			{/* ADMIN VIEW */}
+			{mode === 'admin' ? (
+				!isAdminAuthenticated ? (
+					/* ADMIN LOGIN FORM SCREEN */
+					<div className="admin-container" style={{ maxWidth: '460px', marginTop: '4rem' }}>
+						<div className="article-card" style={{ padding: '2.5rem 2rem', textAlign: 'center' }}>
+							<div
+								className="logo-icon"
+								style={{
+									margin: '0 auto 1.25rem',
+									width: '64px',
+									height: '64px',
+									fontSize: '2rem',
+									borderRadius: '16px',
+								}}
+							>
+								🔒
 							</div>
-							<div className="stat-item">
-								<div className="stat-value">4K HDR</div>
-								<div className="stat-label">Master Encodes</div>
-							</div>
-							<div className="stat-item">
-								<div className="stat-value">99.9%</div>
-								<div className="stat-label">CDN Uptime</div>
-							</div>
-						</div>
-					</div>
-				</section>
-			)}
-
-			{/* Expiration Notice if accessed after 10 min */}
-			{expiredNotice && (
-				<div className="alert-banner">
-					⚠️ <b>Security Session Expired:</b> This file link has passed the 10-minute Telegram verification window. Displaying the main
-					CineTech blog catalog.
-				</div>
-			)}
-
-			<div className="main-layout">
-				{/* Main Content Area */}
-				<main id="blog-grid">
-					{mode === 'bot_visitor' && (file || movie) ? (
-						/* BOT VISITOR MODE: Full Movie Details, Specs & 10s Countdown Security Terminal */
-						<article className="article-card">
-							<span className="article-category">Verified Media Index &amp; File Gateway</span>
-							<h1 className="article-title">
-								{movie?.title || file?.fileName} {movie?.year ? `(${movie.year})` : ''} — Official Review &amp; Access Terminal
+							<h1
+								style={{
+									fontFamily: 'Space Grotesk, sans-serif',
+									fontSize: '1.75rem',
+									fontWeight: 800,
+									color: '#0f172a',
+									marginBottom: '0.5rem',
+								}}
+							>
+								Admin Security Access
 							</h1>
+							<p style={{ color: '#64748b', fontSize: '0.92rem', marginBottom: '2rem', lineHeight: '1.5' }}>
+								Enter your admin password to access the database management dashboard.
+							</p>
 
-							<div className="article-meta">
-								<span>By CineTech Media Archive</span>
-								<span>•</span>
-								<span>Updated Today</span>
-								<span>•</span>
-								<span>DB Record #{file?.id || movie?.id}</span>
-							</div>
-
-							{/* Main Movie Poster & Detail Card */}
-							<div className="movie-info-card">
-								<div className="movie-poster-container">
-									{movie?.posterUrl ? (
-										<img
-											src={movie.posterUrl}
-											alt={movie.title}
-											className="movie-poster"
-											onError={(e) => {
-												e.target.style.display = 'none';
-												e.target.nextSibling.style.display = 'flex';
-											}}
-										/>
-									) : null}
-									<div className="poster-fallback" style={{ display: movie?.posterUrl ? 'none' : 'flex' }}>
-										<div style={{ fontSize: '2.5rem', marginBottom: '0.5rem' }}>🎬</div>
-										<div>{movie?.title || file?.fileName}</div>
-									</div>
+							<form onSubmit={handleAdminLoginSubmit}>
+								<div className="form-group" style={{ marginBottom: '1.5rem', textAlign: 'left' }}>
+									<label className="form-label">Admin Password</label>
+									<input
+										type="password"
+										className="form-input"
+										placeholder="Enter admin password..."
+										required
+										value={adminPasswordInput}
+										onChange={(e) => setAdminPasswordInput(e.target.value)}
+									/>
 								</div>
 
-								<div className="movie-details">
-									<h3>{movie?.title || file?.fileName}</h3>
-									{movie?.originalTitle && <div className="original-title">Original Title: {movie.originalTitle}</div>}
-
-									<div className="movie-tags">
-										{movie?.imdbRating && (
-											<span className="tag-badge tag-rating">
-												⭐ IMDb: {movie.imdbRating}/10 {movie.imdbVotes ? `(${movie.imdbVotes} votes)` : ''}
-											</span>
-										)}
-										{movie?.year && <span className="tag-badge">Year: {movie.year}</span>}
-										{file?.quality && <span className="tag-badge tag-feature">Quality: {file.quality}</span>}
-										{file?.size && <span className="tag-badge">Size: {file.size}</span>}
-										{movie?.contentRating && <span className="tag-badge">Rated: {movie.contentRating}</span>}
-										{movie?.runtime && <span className="tag-badge">Runtime: {movie.runtime}</span>}
-										{movie?.language && <span className="tag-badge">Lang: {movie.language}</span>}
-										{file?.isHevc && <span className="tag-badge tag-feature">HEVC</span>}
-										{file?.isHdr && <span className="tag-badge tag-feature">HDR</span>}
-										{file?.isDualAudio && <span className="tag-badge tag-feature">Dual Audio</span>}
-									</div>
-
-									{movie?.genre && (
-										<div style={{ marginBottom: '0.75rem', fontSize: '0.92rem', color: '#4f46e5', fontWeight: 700 }}>
-											<strong>Genre:</strong> {movie.genre}
-										</div>
-									)}
-
-									<p className="movie-overview">
-										{movie?.description ||
-											'Full HD media file indexed in D1 database with verified audio tracks and optimized container encoding. Ready for high-speed transfer.'}
-									</p>
-
-									<div className="movie-credits">
-										{movie?.director && (
-											<span>
-												<strong>Director:</strong> {movie.director}
-											</span>
-										)}
-										{movie?.cast && (
-											<span>
-												<strong>Cast:</strong> {movie.cast}
-											</span>
-										)}
-									</div>
-								</div>
-							</div>
-
-							{/* Technical File Specifications Grid */}
-							{file && (
-								<div className="spec-box">
-									<div className="spec-box-title">
-										<span>📦</span>
-										<span>Database File Technical Specifications</span>
-									</div>
-									<div className="spec-grid">
-										<div className="spec-item">
-											<div className="spec-label">File Name</div>
-											<div className="spec-value" style={{ wordBreak: 'break-all', fontSize: '0.88rem' }}>
-												{file.fileName}
-											</div>
-										</div>
-										<div className="spec-item">
-											<div className="spec-label">File Size</div>
-											<div className="spec-value">{file.size}</div>
-										</div>
-										<div className="spec-item">
-											<div className="spec-label">Quality Label</div>
-											<div className="spec-value">{file.quality}</div>
-										</div>
-										{file.resolution && (
-											<div className="spec-item">
-												<div className="spec-label">Resolution</div>
-												<div className="spec-value">{file.resolution}</div>
-											</div>
-										)}
-										{file.codec && (
-											<div className="spec-item">
-												<div className="spec-label">Video Codec</div>
-												<div className="spec-value">{file.codec.toUpperCase()}</div>
-											</div>
-										)}
-										{file.audioTracks && (
-											<div className="spec-item">
-												<div className="spec-label">Audio Tracks</div>
-												<div className="spec-value">{file.audioTracks}</div>
-											</div>
-										)}
-										{file.subtitle && (
-											<div className="spec-item">
-												<div className="spec-label">Subtitles</div>
-												<div className="spec-value">{file.subtitle}</div>
-											</div>
-										)}
-										{file.episodeString && (
-											<div className="spec-item">
-												<div className="spec-label">Episode</div>
-												<div className="spec-value">{file.episodeString}</div>
-											</div>
-										)}
-									</div>
-								</div>
-							)}
-
-							<div className="article-body">
-								<p>
-									This media asset is stored securely within the Telegram Cloud Network. Access validation via our 10-second security timer
-									ensures optimal transfer speeds across Cloudflare edge locations while preventing hotlinking.
-								</p>
-							</div>
-
-							{/* 10-Second File Unlock Terminal */}
-							<div className="unlock-terminal">
-								<div className="terminal-title">
-									<span>🔒</span>
-									<span>File Download Security Terminal</span>
-								</div>
-
-								<p className="terminal-status">
-									{countdown > 0
-										? `⏳ Please wait ${countdown} seconds to unlock your Telegram file link...`
-										: '✅ File Link Successfully Unlocked! Click below to send to your Telegram app.'}
-								</p>
-
-								{countdown > 0 ? (
-									<div className="countdown-circle">{countdown}</div>
-								) : (
+								{adminLoginError && (
 									<div
-										className="countdown-circle"
-										style={{ borderColor: '#10b981', color: '#10b981', background: 'rgba(16, 185, 129, 0.2)' }}
+										style={{
+											marginBottom: '1.5rem',
+											padding: '0.75rem 1rem',
+											borderRadius: '8px',
+											background: '#fee2e2',
+											color: '#dc2626',
+											fontSize: '0.88rem',
+											fontWeight: 700,
+											textAlign: 'left',
+										}}
 									>
-										✓
+										{adminLoginError}
 									</div>
 								)}
 
-								<div className="progress-container">
-									<div className="progress-bar" style={{ width: `${progress}%` }}></div>
-								</div>
-
 								<button
-									className={`btn-get-file ${countdown > 0 ? 'btn-disabled' : 'btn-active'}`}
-									disabled={countdown > 0}
-									onClick={handleGetFileClick}
+									type="submit"
+									className="btn-get-file btn-active"
+									disabled={adminLoginLoading}
+									style={{ width: '100%', maxWidth: 'none', padding: '0.9rem' }}
 								>
-									{countdown > 0 ? <span>⏳ Preparing Link ({countdown}s)...</span> : <span>📥 Get Movie File in Telegram</span>}
+									{adminLoginLoading ? '⏳ Verifying...' : '🔑 Unlock Admin Dashboard'}
+								</button>
+							</form>
+
+							<div
+								style={{
+									marginTop: '1.75rem',
+									fontSize: '0.82rem',
+									color: '#94a3b8',
+									borderTop: '1px solid #e2e8f0',
+									paddingTop: '1.25rem',
+								}}
+							>
+								🔑 Default admin password: <strong style={{ color: '#4f46e5' }}>admin123</strong>
+							</div>
+						</div>
+					</div>
+				) : (
+					/* FULL AUTHENTICATED ADMIN DASHBOARD */
+					<div className="admin-container">
+						{/* Admin Top Header */}
+						<div className="admin-header-card">
+							<div>
+								<h1 className="admin-title">
+									<span>⚙️</span> Movie Database Management
+								</h1>
+								<p style={{ color: '#64748b', fontSize: '0.95rem', marginTop: '0.25rem' }}>
+									View, search, edit, and enrich movie metadata records in D1 Database.
+								</p>
+							</div>
+
+							<div style={{ display: 'flex', gap: '1rem', alignItems: 'center' }}>
+								<span className="tag-badge tag-feature" style={{ fontSize: '0.9rem', padding: '0.4rem 0.9rem' }}>
+									Total Movies: <strong>{adminTotal}</strong>
+								</span>
+								<button className="admin-btn admin-btn-danger" onClick={handleAdminLogout}>
+									🚪 Logout
 								</button>
 							</div>
-						</article>
-					) : (
-						/* NORMAL BLOG MODE: Public Blog View with Grid of Movies & Articles */
-						<div>
-							<div className="blog-grid-header">
-								<h2 className="blog-grid-title">Latest Reviews &amp; Releases</h2>
 
-								<div className="filter-pills">
-									{['All', 'Action', 'Comedy', 'Drama', 'Thriller', 'Tech'].map((cat) => (
-										<button
-											key={cat}
-											className={`pill-btn ${activeCategory === cat ? 'active' : ''}`}
-											onClick={() => setActiveCategory(cat)}
-										>
-											{cat}
+							{/* Search & Genre Filter Toolbar */}
+							<div className="admin-toolbar">
+								<input
+									type="text"
+									className="admin-input"
+									placeholder="🔍 Search title, original title, or slug..."
+									style={{ flex: 1, minWidth: '240px' }}
+									value={adminSearch}
+									onChange={handleAdminSearchChange}
+								/>
+
+								<select className="admin-select" value={adminGenre} onChange={handleAdminGenreChange}>
+									<option value="">All Genres</option>
+									<option value="Action">Action</option>
+									<option value="Comedy">Comedy</option>
+									<option value="Crime">Crime</option>
+									<option value="Drama">Drama</option>
+									<option value="Thriller">Thriller</option>
+									<option value="Sci-Fi">Sci-Fi</option>
+									<option value="Adventure">Adventure</option>
+									<option value="Mystery">Mystery</option>
+								</select>
+
+								<button className="admin-btn admin-btn-secondary" onClick={() => loadAdminMovies(adminPage, adminSearch, adminGenre)}>
+									🔄 Refresh
+								</button>
+							</div>
+						</div>
+
+						{/* Admin Movies Data Table */}
+						<div className="admin-table-wrapper">
+							{adminLoading ? (
+								<div style={{ padding: '3rem', textAlign: 'center', color: '#64748b' }}>
+									<div style={{ fontSize: '2rem', marginBottom: '0.5rem' }}>⏳</div>
+									<p>Loading database movies...</p>
+								</div>
+							) : adminMovies.length === 0 ? (
+								<div style={{ padding: '3rem', textAlign: 'center', color: '#64748b' }}>
+									<div style={{ fontSize: '2rem', marginBottom: '0.5rem' }}>🎬</div>
+									<p style={{ fontSize: '1.1rem', fontWeight: 700 }}>No movies found in database.</p>
+									<p style={{ fontSize: '0.9rem' }}>Movies are automatically indexed when posted to Telegram channels.</p>
+								</div>
+							) : (
+								<table className="admin-table">
+									<thead>
+										<tr>
+											<th>Poster</th>
+											<th>ID / Title</th>
+											<th>Year / Type</th>
+											<th>IMDb Rating</th>
+											<th>Director / Cast</th>
+											<th>Genre</th>
+											<th style={{ textAlign: 'right' }}>Actions</th>
+										</tr>
+									</thead>
+									<tbody>
+										{adminMovies.map((m) => (
+											<tr key={m.id}>
+												<td>
+													{m.posterUrl ? (
+														<img
+															src={m.posterUrl}
+															alt={m.title}
+															className="admin-thumb"
+															onError={(e) => {
+																e.target.style.display = 'none';
+															}}
+														/>
+													) : (
+														<div
+															className="admin-thumb"
+															style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '1.2rem' }}
+														>
+															🎬
+														</div>
+													)}
+												</td>
+												<td>
+													<div style={{ fontWeight: 800, color: '#0f172a' }}>{m.title}</div>
+													{m.originalTitle && <div style={{ fontSize: '0.8rem', color: '#64748b' }}>{m.originalTitle}</div>}
+													<div style={{ fontSize: '0.75rem', color: '#94a3b8' }}>
+														ID: #{m.id} • Slug: {m.slug}
+													</div>
+												</td>
+												<td>
+													<div style={{ fontWeight: 700 }}>{m.year || 'N/A'}</div>
+													<span className="tag-badge" style={{ fontSize: '0.72rem', textTransform: 'uppercase' }}>
+														{m.type || 'movie'}
+													</span>
+												</td>
+												<td>
+													{m.imdbRating ? (
+														<span className="tag-badge tag-rating">⭐ {m.imdbRating}/10</span>
+													) : (
+														<span style={{ color: '#94a3b8', fontSize: '0.85rem' }}>Not rated</span>
+													)}
+												</td>
+												<td style={{ maxWidth: '200px' }}>
+													<div style={{ fontSize: '0.85rem', fontWeight: 600, color: '#334155' }}>{m.director || 'N/A'}</div>
+													<div
+														style={{
+															fontSize: '0.78rem',
+															color: '#64748b',
+															overflow: 'hidden',
+															textOverflow: 'ellipsis',
+															whiteSpace: 'nowrap',
+														}}
+													>
+														{m.cast || 'N/A'}
+													</div>
+												</td>
+												<td style={{ fontSize: '0.85rem', color: '#4f46e5', fontWeight: 600 }}>{m.genre || 'N/A'}</td>
+												<td style={{ textAlign: 'right' }}>
+													<div style={{ display: 'flex', gap: '0.5rem', justifyContent: 'flex-end' }}>
+														<button className="admin-btn admin-btn-primary" onClick={() => handleOpenEdit(m)}>
+															✏️ Edit
+														</button>
+														<button className="admin-btn admin-btn-danger" onClick={() => handleDeleteMovie(m.id, m.title)}>
+															🗑️ Delete
+														</button>
+													</div>
+												</td>
+											</tr>
+										))}
+									</tbody>
+								</table>
+							)}
+
+							{/* Admin Pagination */}
+							<div className="admin-pagination">
+								<div style={{ fontSize: '0.88rem', color: '#64748b' }}>
+									Showing Page <strong>{adminPage}</strong> of <strong>{adminTotalPages}</strong> (Total <strong>{adminTotal}</strong>{' '}
+									records)
+								</div>
+								<div style={{ display: 'flex', gap: '0.5rem' }}>
+									<button
+										className="admin-btn admin-btn-secondary"
+										disabled={adminPage <= 1}
+										onClick={() => handleAdminPageChange(adminPage - 1)}
+									>
+										← Previous
+									</button>
+									<button
+										className="admin-btn admin-btn-secondary"
+										disabled={adminPage >= adminTotalPages}
+										onClick={() => handleAdminPageChange(adminPage + 1)}
+									>
+										Next →
+									</button>
+								</div>
+							</div>
+						</div>
+
+						{/* EDIT MOVIE MODAL */}
+						{editingMovie && (
+							<div className="modal-overlay" onClick={handleCloseEdit}>
+								<div className="modal-content" onClick={(e) => e.stopPropagation()}>
+									<div className="modal-header">
+										<h2 className="modal-title">✏️ Edit Movie Record #{editingMovie.id}</h2>
+										<button className="modal-close" onClick={handleCloseEdit}>
+											✕
 										</button>
-									))}
+									</div>
+
+									{/* OMDb / IMDb Search Box for Auto-Fill */}
+									<div className="omdb-box">
+										<div className="omdb-box-title">
+											<span>🎬</span> Search OMDb / IMDb to Auto-Fill All Metadata Fields
+										</div>
+										<div className="omdb-search-flex">
+											<input
+												type="text"
+												className="form-input"
+												style={{ flex: 1 }}
+												placeholder="Enter movie title or IMDb ID (e.g. Luke Cage, Wieners)..."
+												value={omdbQuery}
+												onChange={(e) => setOmdbQuery(e.target.value)}
+											/>
+											<button type="button" className="admin-btn admin-btn-success" onClick={handleOmdbSearch}>
+												🔍 Search &amp; Auto-Fill
+											</button>
+										</div>
+										{omdbStatus && (
+											<div
+												style={{
+													marginTop: '0.5rem',
+													fontSize: '0.88rem',
+													fontWeight: 600,
+													color: omdbStatus.startsWith('✅') ? '#059669' : '#d97706',
+												}}
+											>
+												{omdbStatus}
+											</div>
+										)}
+									</div>
+
+									{/* Edit Movie Form */}
+									<form onSubmit={handleSaveMovie}>
+										<div className="form-grid">
+											<div className="form-group">
+												<label className="form-label">Movie Title *</label>
+												<input
+													type="text"
+													className="form-input"
+													required
+													value={editFormData.title || ''}
+													onChange={(e) => setEditFormData({ ...editFormData, title: e.target.value })}
+												/>
+											</div>
+
+											<div className="form-group">
+												<label className="form-label">Original Title</label>
+												<input
+													type="text"
+													className="form-input"
+													value={editFormData.originalTitle || ''}
+													onChange={(e) => setEditFormData({ ...editFormData, originalTitle: e.target.value })}
+												/>
+											</div>
+
+											<div className="form-group">
+												<label className="form-label">Release Year</label>
+												<input
+													type="number"
+													className="form-input"
+													placeholder="2026"
+													value={editFormData.year || ''}
+													onChange={(e) => setEditFormData({ ...editFormData, year: e.target.value })}
+												/>
+											</div>
+
+											<div className="form-group">
+												<label className="form-label">Type</label>
+												<select
+													className="form-input"
+													value={editFormData.type || 'movie'}
+													onChange={(e) => setEditFormData({ ...editFormData, type: e.target.value })}
+												>
+													<option value="movie">Movie</option>
+													<option value="series">TV Series</option>
+												</select>
+											</div>
+
+											<div className="form-group">
+												<label className="form-label">Genre(s)</label>
+												<input
+													type="text"
+													className="form-input"
+													placeholder="Action, Crime, Drama"
+													value={editFormData.genre || ''}
+													onChange={(e) => setEditFormData({ ...editFormData, genre: e.target.value })}
+												/>
+											</div>
+
+											<div className="form-group">
+												<label className="form-label">Language</label>
+												<input
+													type="text"
+													className="form-input"
+													placeholder="Dual Audio [Hindi + English]"
+													value={editFormData.language || ''}
+													onChange={(e) => setEditFormData({ ...editFormData, language: e.target.value })}
+												/>
+											</div>
+
+											<div className="form-group">
+												<label className="form-label">Director</label>
+												<input
+													type="text"
+													className="form-input"
+													value={editFormData.director || ''}
+													onChange={(e) => setEditFormData({ ...editFormData, director: e.target.value })}
+												/>
+											</div>
+
+											<div className="form-group">
+												<label className="form-label">Cast / Actors</label>
+												<input
+													type="text"
+													className="form-input"
+													value={editFormData.cast || ''}
+													onChange={(e) => setEditFormData({ ...editFormData, cast: e.target.value })}
+												/>
+											</div>
+
+											<div className="form-group">
+												<label className="form-label">IMDb Rating (e.g. 8.5)</label>
+												<input
+													type="text"
+													className="form-input"
+													placeholder="8.5"
+													value={editFormData.imdbRating || ''}
+													onChange={(e) => setEditFormData({ ...editFormData, imdbRating: e.target.value })}
+												/>
+											</div>
+
+											<div className="form-group">
+												<label className="form-label">IMDb Votes Count</label>
+												<input
+													type="text"
+													className="form-input"
+													placeholder="1500"
+													value={editFormData.imdbVotes || ''}
+													onChange={(e) => setEditFormData({ ...editFormData, imdbVotes: e.target.value })}
+												/>
+											</div>
+
+											<div className="form-group">
+												<label className="form-label">IMDb ID (tt1234567)</label>
+												<input
+													type="text"
+													className="form-input"
+													placeholder="tt1234567"
+													value={editFormData.imdbId || ''}
+													onChange={(e) => setEditFormData({ ...editFormData, imdbId: e.target.value })}
+												/>
+											</div>
+
+											<div className="form-group">
+												<label className="form-label">Runtime (e.g. 120 min)</label>
+												<input
+													type="text"
+													className="form-input"
+													placeholder="120 min"
+													value={editFormData.runtime || ''}
+													onChange={(e) => setEditFormData({ ...editFormData, runtime: e.target.value })}
+												/>
+											</div>
+
+											<div className="form-group full-width">
+												<label className="form-label">Poster Image URL</label>
+												<input
+													type="text"
+													className="form-input"
+													placeholder="https://..."
+													value={editFormData.posterUrl || ''}
+													onChange={(e) => setEditFormData({ ...editFormData, posterUrl: e.target.value })}
+												/>
+											</div>
+
+											<div className="form-group full-width">
+												<label className="form-label">Description / Plot Overview</label>
+												<textarea
+													className="form-textarea"
+													rows={4}
+													value={editFormData.description || ''}
+													onChange={(e) => setEditFormData({ ...editFormData, description: e.target.value })}
+												/>
+											</div>
+										</div>
+
+										{saveStatus && (
+											<div
+												style={{
+													marginTop: '1.25rem',
+													padding: '0.75rem 1rem',
+													borderRadius: '8px',
+													background: saveStatus.startsWith('✅') ? '#d1fae5' : '#fee2e2',
+													color: saveStatus.startsWith('✅') ? '#047857' : '#dc2626',
+													fontWeight: 700,
+													fontSize: '0.9rem',
+												}}
+											>
+												{saveStatus}
+											</div>
+										)}
+
+										<div style={{ display: 'flex', gap: '1rem', justifyContent: 'flex-end', marginTop: '1.75rem' }}>
+											<button type="button" className="admin-btn admin-btn-secondary" onClick={handleCloseEdit}>
+												Cancel
+											</button>
+											<button type="submit" className="admin-btn admin-btn-primary" style={{ padding: '0.7rem 1.5rem', fontSize: '1rem' }}>
+												💾 Save Movie Updates
+											</button>
+										</div>
+									</form>
+								</div>
+							</div>
+						)}
+					</div>
+				)
+			) : (
+				<>
+					{/* Hero Banner for normal blog view */}
+					{mode === 'normal_blog' && (
+						<section className="hero-banner">
+							<div className="hero-content">
+								<div className="hero-badge">
+									<span>✨</span> Premier Digital Cinema &amp; Media Tech Journal
+								</div>
+								<h1 className="hero-title">High-Bitrate Cinema &amp; Cloud Archiving</h1>
+								<p className="hero-subtitle">
+									In-depth reviews, codec compression benchmarks, AV1 vs HEVC analysis, and master file metadata updated daily.
+								</p>
+								<div className="hero-stats">
+									<div className="stat-item">
+										<div className="stat-value">10,000+</div>
+										<div className="stat-label">Indexed Releases</div>
+									</div>
+									<div className="stat-item">
+										<div className="stat-value">4K HDR</div>
+										<div className="stat-label">Master Encodes</div>
+									</div>
+									<div className="stat-item">
+										<div className="stat-value">99.9%</div>
+										<div className="stat-label">CDN Uptime</div>
+									</div>
+								</div>
+							</div>
+						</section>
+					)}
+
+					{/* Expiration Notice if accessed after 10 min */}
+					{expiredNotice && (
+						<div className="alert-banner">
+							⚠️ <b>Security Session Expired:</b> This file link has passed the 10-minute Telegram verification window. Displaying the main
+							CineTech blog catalog.
+						</div>
+					)}
+
+					<div className="main-layout">
+						{/* Main Content Area */}
+						<main id="blog-grid">
+							{mode === 'bot_visitor' && (file || movie) ? (
+								/* BOT VISITOR MODE: Full Movie Details, Specs & 10s Countdown Security Terminal */
+								<article className="article-card">
+									<span className="article-category">Verified Media Index &amp; File Gateway</span>
+									<h1 className="article-title">
+										{movie?.title || file?.fileName} {movie?.year ? `(${movie.year})` : ''} — Official Review &amp; Access Terminal
+									</h1>
+
+									<div className="article-meta">
+										<span>By CineTech Media Archive</span>
+										<span>•</span>
+										<span>Updated Today</span>
+										<span>•</span>
+										<span>DB Record #{file?.id || movie?.id}</span>
+									</div>
+
+									{/* Main Movie Poster & Detail Card */}
+									<div className="movie-info-card">
+										<div className="movie-poster-container">
+											{movie?.posterUrl ? (
+												<img
+													src={movie.posterUrl}
+													alt={movie.title}
+													className="movie-poster"
+													onError={(e) => {
+														e.target.style.display = 'none';
+														e.target.nextSibling.style.display = 'flex';
+													}}
+												/>
+											) : null}
+											<div className="poster-fallback" style={{ display: movie?.posterUrl ? 'none' : 'flex' }}>
+												<div style={{ fontSize: '2.5rem', marginBottom: '0.5rem' }}>🎬</div>
+												<div>{movie?.title || file?.fileName}</div>
+											</div>
+										</div>
+
+										<div className="movie-details">
+											<h3>{movie?.title || file?.fileName}</h3>
+											{movie?.originalTitle && <div className="original-title">Original Title: {movie.originalTitle}</div>}
+
+											<div className="movie-tags">
+												{movie?.imdbRating && (
+													<span className="tag-badge tag-rating">
+														⭐ IMDb: {movie.imdbRating}/10 {movie.imdbVotes ? `(${movie.imdbVotes} votes)` : ''}
+													</span>
+												)}
+												{movie?.year && <span className="tag-badge">Year: {movie.year}</span>}
+												{file?.quality && <span className="tag-badge tag-feature">Quality: {file.quality}</span>}
+												{file?.size && <span className="tag-badge">Size: {file.size}</span>}
+												{movie?.contentRating && <span className="tag-badge">Rated: {movie.contentRating}</span>}
+												{movie?.runtime && <span className="tag-badge">Runtime: {movie.runtime}</span>}
+												{movie?.language && <span className="tag-badge">Lang: {movie.language}</span>}
+												{file?.isHevc && <span className="tag-badge tag-feature">HEVC</span>}
+												{file?.isHdr && <span className="tag-badge tag-feature">HDR</span>}
+												{file?.isDualAudio && <span className="tag-badge tag-feature">Dual Audio</span>}
+											</div>
+
+											{movie?.genre && (
+												<div style={{ marginBottom: '0.75rem', fontSize: '0.92rem', color: '#4f46e5', fontWeight: 700 }}>
+													<strong>Genre:</strong> {movie.genre}
+												</div>
+											)}
+
+											<p className="movie-overview">
+												{movie?.description ||
+													'Full HD media file indexed in D1 database with verified audio tracks and optimized container encoding. Ready for high-speed transfer.'}
+											</p>
+
+											<div className="movie-credits">
+												{movie?.director && (
+													<span>
+														<strong>Director:</strong> {movie.director}
+													</span>
+												)}
+												{movie?.cast && (
+													<span>
+														<strong>Cast:</strong> {movie.cast}
+													</span>
+												)}
+											</div>
+										</div>
+									</div>
+
+									{/* Technical File Specifications Grid */}
+									{file && (
+										<div className="spec-box">
+											<div className="spec-box-title">
+												<span>📦</span>
+												<span>Database File Technical Specifications</span>
+											</div>
+											<div className="spec-grid">
+												<div className="spec-item">
+													<div className="spec-label">File Name</div>
+													<div className="spec-value" style={{ wordBreak: 'break-all', fontSize: '0.88rem' }}>
+														{file.fileName}
+													</div>
+												</div>
+												<div className="spec-item">
+													<div className="spec-label">File Size</div>
+													<div className="spec-value">{file.size}</div>
+												</div>
+												<div className="spec-item">
+													<div className="spec-label">Quality Label</div>
+													<div className="spec-value">{file.quality}</div>
+												</div>
+												{file.resolution && (
+													<div className="spec-item">
+														<div className="spec-label">Resolution</div>
+														<div className="spec-value">{file.resolution}</div>
+													</div>
+												)}
+												{file.codec && (
+													<div className="spec-item">
+														<div className="spec-label">Video Codec</div>
+														<div className="spec-value">{file.codec.toUpperCase()}</div>
+													</div>
+												)}
+												{file.audioTracks && (
+													<div className="spec-item">
+														<div className="spec-label">Audio Tracks</div>
+														<div className="spec-value">{file.audioTracks}</div>
+													</div>
+												)}
+												{file.subtitle && (
+													<div className="spec-item">
+														<div className="spec-label">Subtitles</div>
+														<div className="spec-value">{file.subtitle}</div>
+													</div>
+												)}
+												{file.episodeString && (
+													<div className="spec-item">
+														<div className="spec-label">Episode</div>
+														<div className="spec-value">{file.episodeString}</div>
+													</div>
+												)}
+											</div>
+										</div>
+									)}
+
+									<div className="article-body">
+										<p>
+											This media asset is stored securely within the Telegram Cloud Network. Access validation via our 10-second security
+											timer ensures optimal transfer speeds across Cloudflare edge locations while preventing hotlinking.
+										</p>
+									</div>
+
+									{/* 10-Second File Unlock Terminal */}
+									<div className="unlock-terminal">
+										<div className="terminal-title">
+											<span>🔒</span>
+											<span>File Download Security Terminal</span>
+										</div>
+
+										<p className="terminal-status">
+											{countdown > 0
+												? `⏳ Please wait ${countdown} seconds to unlock your Telegram file link...`
+												: '✅ File Link Successfully Unlocked! Click below to send to your Telegram app.'}
+										</p>
+
+										{countdown > 0 ? (
+											<div className="countdown-circle">{countdown}</div>
+										) : (
+											<div
+												className="countdown-circle"
+												style={{ borderColor: '#10b981', color: '#10b981', background: 'rgba(16, 185, 129, 0.2)' }}
+											>
+												✓
+											</div>
+										)}
+
+										<div className="progress-container">
+											<div className="progress-bar" style={{ width: `${progress}%` }}></div>
+										</div>
+
+										<button
+											className={`btn-get-file ${countdown > 0 ? 'btn-disabled' : 'btn-active'}`}
+											disabled={countdown > 0}
+											onClick={handleGetFileClick}
+										>
+											{countdown > 0 ? <span>⏳ Preparing Link ({countdown}s)...</span> : <span>📥 Get Movie File in Telegram</span>}
+										</button>
+									</div>
+								</article>
+							) : (
+								/* NORMAL BLOG MODE: Public Blog View with Grid of Movies & Articles */
+								<div>
+									<div className="blog-grid-header">
+										<h2 className="blog-grid-title">Latest Reviews &amp; Releases</h2>
+
+										<div className="filter-pills">
+											{['All', 'Action', 'Comedy', 'Drama', 'Thriller', 'Tech'].map((cat) => (
+												<button
+													key={cat}
+													className={`pill-btn ${activeCategory === cat ? 'active' : ''}`}
+													onClick={() => setActiveCategory(cat)}
+												>
+													{cat}
+												</button>
+											))}
+										</div>
+									</div>
+
+									{filteredPosts.length === 0 ? (
+										<div className="article-card" style={{ textAlign: 'center', padding: '3rem 1.5rem' }}>
+											<div style={{ fontSize: '2.5rem', marginBottom: '1rem' }}>🔎</div>
+											<h3 style={{ fontSize: '1.3rem', marginBottom: '0.5rem' }}>No matching articles found</h3>
+											<p style={{ color: '#64748b' }}>Try adjusting your search query or category filter.</p>
+										</div>
+									) : (
+										<div className="blog-grid">
+											{filteredPosts.map((post) => (
+												<article key={post.id} className="blog-card">
+													<div className="blog-card-img-wrapper">
+														<img
+															src={post.posterUrl}
+															alt={post.title}
+															className="blog-card-img"
+															onError={(e) => {
+																e.target.src =
+																	'https://images.unsplash.com/photo-1489599849927-2ee91cede3ba?auto=format&fit=crop&w=600&q=80';
+															}}
+														/>
+														<span className="blog-card-badge">⭐ {post.rating}</span>
+													</div>
+
+													<div className="blog-card-body">
+														<span
+															className="article-category"
+															style={{ fontSize: '0.75rem', marginBottom: '0.5rem', padding: '0.2rem 0.6rem' }}
+														>
+															{post.category}
+														</span>
+														<h3 className="blog-card-title">{post.title}</h3>
+														<p className="blog-card-excerpt">{post.excerpt}</p>
+
+														<div className="blog-card-footer">
+															<span>{post.date}</span>
+															<span className="read-more-link">Read Review →</span>
+														</div>
+													</div>
+												</article>
+											))}
+										</div>
+									)}
+								</div>
+							)}
+						</main>
+
+						{/* Sidebar */}
+						<aside id="about">
+							<div className="sidebar-card">
+								<h3 className="sidebar-title">Trending Topics</h3>
+								<div className="recent-post">
+									<h4>Understanding HEVC vs AV1 Codec Benchmarks</h4>
+									<span>Media Tech • 4 min read</span>
+								</div>
+								<div className="recent-post">
+									<h4>Top 10 Cinematic Masterpieces Released This Month</h4>
+									<span>Film Review • 6 min read</span>
+								</div>
+								<div className="recent-post">
+									<h4>Cloudflare Edge CDN Acceleration for Bot Gateways</h4>
+									<span>Architecture • 5 min read</span>
 								</div>
 							</div>
 
-							{filteredPosts.length === 0 ? (
-								<div className="article-card" style={{ textAlign: 'center', padding: '3rem 1.5rem' }}>
-									<div style={{ fontSize: '2.5rem', marginBottom: '1rem' }}>🔎</div>
-									<h3 style={{ fontSize: '1.3rem', marginBottom: '0.5rem' }}>No matching articles found</h3>
-									<p style={{ color: '#64748b' }}>Try adjusting your search query or category filter.</p>
-								</div>
-							) : (
-								<div className="blog-grid">
-									{filteredPosts.map((post) => (
-										<article key={post.id} className="blog-card">
-											<div className="blog-card-img-wrapper">
-												<img
-													src={post.posterUrl}
-													alt={post.title}
-													className="blog-card-img"
-													onError={(e) => {
-														e.target.src = 'https://images.unsplash.com/photo-1489599849927-2ee91cede3ba?auto=format&fit=crop&w=600&q=80';
-													}}
-												/>
-												<span className="blog-card-badge">⭐ {post.rating}</span>
-											</div>
+							<div className="sidebar-card">
+								<h3 className="sidebar-title">About CineTech</h3>
+								<p style={{ color: '#475569', fontSize: '0.92rem', lineHeight: '1.65' }}>
+									CineTech Daily is a premier tech and cinema publication exploring digital film compression, high-bitrate encodings, and
+									cloud worker architectures.
+								</p>
+							</div>
 
-											<div className="blog-card-body">
-												<span
-													className="article-category"
-													style={{ fontSize: '0.75rem', marginBottom: '0.5rem', padding: '0.2rem 0.6rem' }}
-												>
-													{post.category}
-												</span>
-												<h3 className="blog-card-title">{post.title}</h3>
-												<p className="blog-card-excerpt">{post.excerpt}</p>
-
-												<div className="blog-card-footer">
-													<span>{post.date}</span>
-													<span className="read-more-link">Read Review →</span>
-												</div>
-											</div>
-										</article>
-									))}
-								</div>
-							)}
-						</div>
-					)}
-				</main>
-
-				{/* Sidebar */}
-				<aside id="about">
-					<div className="sidebar-card">
-						<h3 className="sidebar-title">Trending Topics</h3>
-						<div className="recent-post">
-							<h4>Understanding HEVC vs AV1 Codec Benchmarks</h4>
-							<span>Media Tech • 4 min read</span>
-						</div>
-						<div className="recent-post">
-							<h4>Top 10 Cinematic Masterpieces Released This Month</h4>
-							<span>Film Review • 6 min read</span>
-						</div>
-						<div className="recent-post">
-							<h4>Cloudflare Edge CDN Acceleration for Bot Gateways</h4>
-							<span>Architecture • 5 min read</span>
-						</div>
+							<div className="sidebar-card" style={{ background: 'linear-gradient(135deg, #4f46e5, #0d9488)', color: '#ffffff' }}>
+								<h3 className="sidebar-title" style={{ color: '#ffffff', borderColor: '#ffffff' }}>
+									Telegram Bot Access
+								</h3>
+								<p style={{ fontSize: '0.9rem', lineHeight: '1.6', marginBottom: '1rem', color: '#e0e7ff' }}>
+									Connect directly with our automated Telegram Bot to index, search, and transfer high-bitrate media releases seamlessly.
+								</p>
+								<a
+									href="https://t.me/movie_time_v1_bot"
+									target="_blank"
+									rel="noreferrer"
+									style={{
+										display: 'inline-block',
+										background: '#ffffff',
+										color: '#4f46e5',
+										fontWeight: 800,
+										padding: '0.6rem 1.25rem',
+										borderRadius: '8px',
+										textDecoration: 'none',
+										fontSize: '0.9rem',
+									}}
+								>
+									Launch Bot 🤖
+								</a>
+							</div>
+						</aside>
 					</div>
-
-					<div className="sidebar-card">
-						<h3 className="sidebar-title">About CineTech</h3>
-						<p style={{ color: '#475569', fontSize: '0.92rem', lineHeight: '1.65' }}>
-							CineTech Daily is a premier tech and cinema publication exploring digital film compression, high-bitrate encodings, and cloud
-							worker architectures.
-						</p>
-					</div>
-
-					<div className="sidebar-card" style={{ background: 'linear-gradient(135deg, #4f46e5, #0d9488)', color: '#ffffff' }}>
-						<h3 className="sidebar-title" style={{ color: '#ffffff', borderColor: '#ffffff' }}>
-							Telegram Bot Access
-						</h3>
-						<p style={{ fontSize: '0.9rem', lineHeight: '1.6', marginBottom: '1rem', color: '#e0e7ff' }}>
-							Connect directly with our automated Telegram Bot to index, search, and transfer high-bitrate media releases seamlessly.
-						</p>
-						<a
-							href="https://t.me/movie_time_v1_bot"
-							target="_blank"
-							rel="noreferrer"
-							style={{
-								display: 'inline-block',
-								background: '#ffffff',
-								color: '#4f46e5',
-								fontWeight: 800,
-								padding: '0.6rem 1.25rem',
-								borderRadius: '8px',
-								textDecoration: 'none',
-								fontSize: '0.9rem',
-							}}
-						>
-							Launch Bot 🤖
-						</a>
-					</div>
-				</aside>
-			</div>
+				</>
+			)}
 
 			{/* Footer */}
 			<footer className="blog-footer">
 				<div style={{ maxWidth: '1240px', margin: '0 auto' }}>
 					<p>© 2026 CineTech Daily. All rights reserved. Powered by Cloudflare Workers &amp; Telegram Bot Architecture.</p>
 					<p style={{ marginTop: '0.5rem', fontSize: '0.82rem', color: '#64748b' }}>
-						Verified Media Index • Edge Content CDN • Security Gateways
+						Verified Media Index • Edge Content CDN • Admin Controls
 					</p>
 				</div>
 			</footer>

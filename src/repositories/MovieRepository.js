@@ -155,6 +155,44 @@ export class MovieRepository extends BaseRepository {
   }
 
   /**
+   * List movies with pagination, search, and genre filtering for Admin dashboard.
+   * @param {object} [opts]
+   * @returns {Promise<{ movies: Movie[], total: number }>}
+   */
+  async listPaginated(opts = {}) {
+    const { limit = 10, offset = 0, search = '', genre = '' } = opts;
+    const whereClauses = [];
+    const params = [];
+
+    if (search) {
+      whereClauses.push('(LOWER(title) LIKE ? OR LOWER(original_title) LIKE ? OR LOWER(slug) LIKE ?)');
+      const p = `%${search.toLowerCase()}%`;
+      params.push(p, p, p);
+    }
+
+    if (genre) {
+      whereClauses.push('LOWER(genre) LIKE ?');
+      params.push(`%${genre.toLowerCase()}%`);
+    }
+
+    const where = whereClauses.length ? `WHERE ${whereClauses.join(' AND ')}` : '';
+    const sql = `
+      SELECT m.*, COUNT(*) OVER() as _total
+      FROM movies m
+      ${where}
+      ORDER BY m.id DESC
+      LIMIT ? OFFSET ?
+    `;
+
+    const rows = await this.all(sql, [...params, limit, offset]);
+    const total = rows[0]?._total ?? 0;
+    return {
+      movies: Movie.fromRows(rows.map(r => { const { _total, ...rest } = r; return rest; })),
+      total,
+    };
+  }
+
+  /**
    * Count total movies.
    * @returns {Promise<number>}
    */
