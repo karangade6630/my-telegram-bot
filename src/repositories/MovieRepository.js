@@ -8,6 +8,7 @@
 import { BaseRepository } from './base/BaseRepository.js';
 import { Movie }          from '../models/Movie.js';
 import { nowISO }         from '../utils/timeUtils.js';
+import { mergeCommaValues } from '../utils/stringUtils.js';
 
 export class MovieRepository extends BaseRepository {
   // ─────────────────────────────────────────────────────────
@@ -282,4 +283,40 @@ export class MovieRepository extends BaseRepository {
     });
     await this.run(`UPDATE movies SET ${clause} WHERE id = ?`, [...values, movieId]);
   }
+
+  /**
+   * Propagate poster URL, merged genres, and merged languages to all movies/series sharing the same base title.
+   * Ensures same-name movies, seasons, and web-series share the verified poster URL and comma-separated genres/languages.
+   *
+   * @param {string} baseTitle - Movie or Series title
+   * @param {string|null} posterUrl - Verified poster URL
+   * @param {string|null} genre - New genre tags
+   * @param {string|null} language - New language tags
+   * @returns {Promise<void>}
+   */
+  async propagateSharedMetadata(baseTitle, posterUrl = null, genre = null, language = null) {
+    if (!baseTitle) return;
+
+    const pattern = `%${baseTitle.trim().toLowerCase()}%`;
+    const rows = await this.all(
+      `SELECT id, title, poster_url, genre, language FROM movies WHERE LOWER(title) LIKE ? OR LOWER(slug) LIKE ?`,
+      [pattern, pattern]
+    );
+
+    for (const row of rows) {
+      const mergedGenre = mergeCommaValues(row.genre, genre);
+      const mergedLang  = mergeCommaValues(row.language, language);
+      const targetPoster = posterUrl || row.poster_url;
+
+      const updateData = {};
+      if (mergedGenre && mergedGenre !== row.genre) updateData.genre = mergedGenre;
+      if (mergedLang && mergedLang !== row.language) updateData.language = mergedLang;
+      if (targetPoster && targetPoster !== row.poster_url) updateData.poster_url = targetPoster;
+
+      if (Object.keys(updateData).length > 0) {
+        await this.updateMetadata(row.id, updateData);
+      }
+    }
+  }
 }
+

@@ -29,8 +29,22 @@ export class OmdbService {
    * @param {number|string} [year]
    * @returns {Promise<object|null>}
    */
+  /**
+   * Main entry point: fetch movie/series metadata with multi-stage fallback pipeline.
+   *
+   * @param {string} rawTitle
+   * @param {number|string} [year]
+   * @returns {Promise<object|null>}
+   */
   async fetchMovieMetadata(rawTitle, year = null) {
     if (!rawTitle) return null;
+
+    // Check if rawTitle is an IMDb ID (e.g. tt1234567)
+    if (/^tt\d+$/i.test(rawTitle.trim())) {
+      const imdbId = rawTitle.trim();
+      const meta = await this._fetchFromOMDBById(imdbId);
+      if (meta) return meta;
+    }
 
     // Clean title: remove S01/S02/Season 2/Ep markers
     const title = OmdbService._cleanTitleForMetadata(rawTitle);
@@ -53,7 +67,14 @@ export class OmdbService {
       return metadata;
     }
 
-    // Stage 2: OMDB with title variations
+    // Stage 2: OMDB Search List (s=) candidate lookup
+    const searchListMeta = await this._searchOMDBSearchList(title, year);
+    if (searchListMeta) {
+      await this._saveCache(cacheKey, searchListMeta);
+      return searchListMeta;
+    }
+
+    // Stage 3: OMDB with title variations
     const variations = generateTitleVariants(title);
     for (const variant of variations) {
       if (variant.toLowerCase() === title.toLowerCase()) continue;
@@ -64,18 +85,16 @@ export class OmdbService {
       }
     }
 
-    // Stage 3: IMDb Suggestion + Direct Search + Chunk Search + JSON-LD Scrape
+    // Stage 4: IMDb Suggestion + Direct Search + Chunk Search + JSON-LD Scrape
     const imdbResult = await this._searchViaIMDbPipeline(title, year);
     if (imdbResult) {
-      // Re-query OMDB with canonical title if available
-      if (imdbResult.title && imdbResult.title.toLowerCase() !== title.toLowerCase()) {
-        const canonicalOMDB = await this._tryOMDB(imdbResult.title, imdbResult.year || year);
+      if (imdbResult.imdbId) {
+        const canonicalOMDB = await this._fetchFromOMDBById(imdbResult.imdbId);
         if (canonicalOMDB) {
           await this._saveCache(cacheKey, canonicalOMDB);
           return canonicalOMDB;
         }
       }
-
       await this._saveCache(cacheKey, imdbResult);
       return imdbResult;
     }
@@ -105,6 +124,7 @@ export class OmdbService {
           year:          parseInt(data.Year) || year,
           description:   decodeHtmlEntities(data.Plot),
           genre:         data.Genre          !== 'N/A' ? data.Genre          : null,
+          language:      data.Language       !== 'N/A' ? data.Language       : null,
           imdbRating:    data.imdbRating      !== 'N/A' ? parseFloat(data.imdbRating) : null,
           ratingCount:   data.imdbVotes       !== 'N/A' ? data.imdbVotes       : null,
           contentRating: data.Rated           !== 'N/A' ? data.Rated           : null,
@@ -119,6 +139,64 @@ export class OmdbService {
       return null;
     } catch (err) {
       logger.error('OMDB fetch error', { error: err.message });
+      return null;
+    }
+  }
+
+  async _fetchFromOMDBById(imdbId) {
+    if (!this.apiKey || !imdbId) return null;
+    const url = new URL(OMDB_BASE_URL);
+    url.searchParams.set('apikey', this.apiKey);
+    url.searchParams.set('i', imdbId);
+
+    try {
+      const res = await fetch(url.toString());
+      if (!res.ok) return null;
+      const data = await res.json();
+      if (data.Response === 'True') {
+        return {
+          title:         decodeHtmlEntities(data.Title),
+          year:          parseInt(data.Year) || null,
+          description:   decodeHtmlEntities(data.Plot),
+          genre:         data.Genre !== 'N/A' ? data.Genre : null,
+          language:      data.Language !== 'N/A' ? data.Language : null,
+          imdbRating:    data.imdbRating !== 'N/A' ? parseFloat(data.imdbRating) : null,
+          ratingCount:   data.imdbVotes !== 'N/A' ? data.imdbVotes : null,
+          contentRating: data.Rated !== 'N/A' ? data.Rated : null,
+          duration:      data.Runtime !== 'N/A' ? data.Runtime : null,
+          cast:          data.Actors !== 'N/A' ? data.Actors : null,
+          directors:     data.Director !== 'N/A' ? data.Director : null,
+          type:          data.Type,
+          imdbId:        data.imdbID,
+          imdbUrl:       `https://www.imdb.com/title/${data.imdbID}/`,
+        };
+      }
+      return null;
+    } catch {
+      return null;
+    }
+  }
+
+  async _searchOMDBSearchList(title, year = null) {
+    if (!this.apiKey) return null;
+    const url = new URL(OMDB_BASE_URL);
+    url.searchParams.set('apikey', this.apiKey);
+    url.searchParams.set('s', title);
+    if (year) url.searchParams.set('y', String(year));
+
+    try {
+      const res = await fetch(url.toString());
+      if (!res.ok) return null;
+      const data = await res.json();
+
+      if (data.Response === 'True' && Array.isArray(data.Search) && data.Search.length > 0) {
+        const top = data.Search[0];
+        if (top.imdbID) {
+          return await this._fetchFromOMDBById(top.imdbID);
+        }
+      }
+      return null;
+    } catch {
       return null;
     }
   }

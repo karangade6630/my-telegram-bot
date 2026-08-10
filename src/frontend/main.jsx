@@ -440,10 +440,24 @@ const App = () => {
 		setEditFormData({});
 	};
 
+	// Helper to merge comma-separated values cleanly
+	const mergeCommaStrings = (existing, incoming) => {
+		const set = new Set();
+		[existing, incoming].forEach((str) => {
+			if (str && typeof str === 'string') {
+				str.split(/[,|/]+/).forEach((p) => {
+					const t = p.trim();
+					if (t) set.add(t);
+				});
+			}
+		});
+		return set.size > 0 ? Array.from(set).join(', ') : null;
+	};
+
 	// Search OMDb and Auto-Fill Form
 	const handleOmdbSearch = () => {
 		if (!omdbQuery.trim()) return;
-		setOmdbStatus('🔍 Searching OMDb API...');
+		setOmdbStatus('🔍 Searching OMDb & IMDb metadata...');
 		const url = `/api/admin/omdb-search?query=${encodeURIComponent(omdbQuery)}&year=${editFormData.year || ''}`;
 		fetch(url)
 			.then((res) => res.json())
@@ -454,7 +468,9 @@ const App = () => {
 						...prev,
 						title: meta.title || prev.title,
 						year: meta.year || prev.year,
-						genre: meta.genre || prev.genre,
+						type: meta.type || prev.type || 'movie',
+						genre: mergeCommaStrings(prev.genre, meta.genre) || meta.genre || prev.genre,
+						language: mergeCommaStrings(prev.language, meta.language) || meta.language || prev.language,
 						description: meta.description || prev.description,
 						director: meta.director || prev.director,
 						cast: meta.cast || prev.cast,
@@ -465,9 +481,9 @@ const App = () => {
 						imdbId: meta.imdbId || prev.imdbId,
 						posterUrl: meta.posterUrl || prev.posterUrl,
 					}));
-					setOmdbStatus('✅ OMDb metadata auto-filled successfully!');
+					setOmdbStatus('✅ OMDb & IMDb metadata auto-filled successfully! Genres and Languages merged.');
 				} else {
-					setOmdbStatus(`⚠️ ${resData.message || 'No OMDb metadata found.'}`);
+					setOmdbStatus(`⚠️ ${resData.message || 'No metadata record found.'}`);
 				}
 			})
 			.catch((err) => {
@@ -771,7 +787,7 @@ const App = () => {
 									paddingTop: '1.25rem',
 								}}
 							>
-								🔑 Default admin password: <strong style={{ color: '#4f46e5' }}>admin123</strong>
+								🔑 Default admin password: <strong style={{ color: '#4f46e5' }}>only admin can access this sorry</strong>
 							</div>
 						</div>
 					</div>

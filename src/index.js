@@ -5,6 +5,7 @@ import { FileRepository } from './repositories/FileRepository.js';
 import { MovieRepository } from './repositories/MovieRepository.js';
 import { OmdbService } from './services/omdbService.js';
 import { FilenameParser } from './parsers/FilenameParser.js';
+import { mergeCommaValues } from './utils/stringUtils.js';
 
 export default {
 	/**
@@ -313,6 +314,16 @@ async function handleAdminUpdateMovie(request, env) {
 		if (body.slug !== undefined) updateData.slug = body.slug;
 
 		await movieRepo.updateMetadata(body.id, updateData);
+
+		// Propagate shared poster URL, merged genres, and merged languages to same-name movies/series/seasons
+		const baseTitle = FilenameParser.cleanMovieTitle(body.title || existing.title);
+		await movieRepo.propagateSharedMetadata(
+			baseTitle,
+			body.posterUrl || existing.posterUrl,
+			body.genre,
+			body.language
+		);
+
 		const updatedMovie = await movieRepo.findById(body.id);
 
 		return Response.json({
@@ -375,7 +386,9 @@ async function handleAdminOmdbSearch(request, env) {
 			result: {
 				title: meta.title || cleanTitle,
 				year: meta.year || year,
+				type: meta.type || 'movie',
 				genre: meta.genre || null,
+				language: meta.language || null,
 				description: meta.description || null,
 				director: meta.directors || null,
 				cast: meta.cast || null,

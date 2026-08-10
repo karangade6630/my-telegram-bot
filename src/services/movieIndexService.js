@@ -105,6 +105,8 @@ export class MovieIndexService {
 
       if (Object.keys(updateData).length > 0) {
         await this.movieRepo.updateMetadata(movieId, updateData);
+        // Propagate shared poster URL, merged genres, and merged languages to same-name movies/series/seasons
+        await this.movieRepo.propagateSharedMetadata(cleanTitle, updateData.poster_url, meta.genre, meta.language);
         logger.info(`Enriched movie #${movieId}: ${meta.title} (${meta.year}) [${meta.imdbId}]`);
       }
     } catch (err) {

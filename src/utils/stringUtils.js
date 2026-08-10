@@ -221,3 +221,29 @@ export function decodeHtmlEntities(str) {
     .replace(/&amp;/gi, '&')
     .trim();
 }
+
+/**
+ * Merge multiple comma-separated string inputs into a single, deduplicated, clean comma-separated string.
+ * e.g., mergeCommaValues("Action, Drama", "Dual Audio, Hindi", "Action, English")
+ * => "Action, Drama, Dual Audio, Hindi, English"
+ *
+ * @param {...(string|null|undefined)} inputs
+ * @returns {string|null}
+ */
+export function mergeCommaValues(...inputs) {
+  const items = new Set();
+  for (const input of inputs) {
+    if (!input || typeof input !== 'string') continue;
+    const parts = input.split(/[,|/]+/);
+    for (const part of parts) {
+      const trimmed = part.trim();
+      if (trimmed) {
+        // Capitalize nicely if lowercase single word
+        const cleanItem = trimmed.length > 2 ? titleCase(trimmed) : trimmed;
+        items.add(cleanItem);
+      }
+    }
+  }
+  return items.size > 0 ? Array.from(items).join(', ') : null;
+}
+
