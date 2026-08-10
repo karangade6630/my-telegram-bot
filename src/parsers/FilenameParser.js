@@ -13,6 +13,72 @@ import { FILENAME_PATTERNS } from '../config/constants.js';
 
 export class FilenameParser {
 	/**
+	 * Clean a raw post string or filename into a pure movie/series title.
+	 * Removes noise tags, qualities, dual audio, brackets, duplicate strings, and season info.
+	 *
+	 * @param {string} raw
+	 * @returns {string}
+	 */
+	static cleanMovieTitle(raw) {
+		if (!raw || typeof raw !== 'string') return 'Unknown';
+
+		let title = raw.trim();
+
+		// Strip extension (.mkv, .mp4, etc.)
+		title = title.replace(/\.(mkv|mp4|avi|mov|wmv|flv|webm|m4v|3gp|ts)$/i, '');
+
+		// Handle doubled duplicate titles (e.g. "Wieners WEB-DL... Wieners WEB-DL...")
+		if (title.length > 20) {
+			const half = Math.floor(title.length / 2);
+			const firstHalf = title.slice(0, half).trim();
+			const secondHalf = title.slice(half).trim();
+			if (firstHalf.length > 5 && secondHalf.startsWith(firstHalf.slice(0, Math.min(15, firstHalf.length)))) {
+				title = firstHalf;
+			}
+		}
+
+		// Replace underscores, dots, pluses, pipes with spaces
+		title = title.replace(/[._+|]/g, ' ');
+
+		// Strip square bracket tags e.g. [Hindi ORG. + English], [English With Subtitles], [S01 Ep30 Added]
+		title = title.replace(/\[[^\]]*\]/g, ' ');
+
+		// Strip parenthetical season/episode info e.g. (Season 1-2), (Season 1), (Episode 1-10)
+		title = title.replace(/\([^)]*season[^)]*\)/gi, ' ');
+		title = title.replace(/\([^)]*episodes?[^)]*\)/gi, ' ');
+
+		// Noise patterns to strip out
+		const noisePatterns = [
+			/\b\d{3,4}p\b/gi,                           // 480p, 720p, 1080p, 2160p
+			/\b4k\b|\buhd\b|\bhd\b|\bhdrip\b|\bwebrip\b|\bbluray\b|\bweb-dl\b|\bwebdl\b|\bdvdrip\b|\bhdtv\b/gi,
+			/\bdual\s*audio\b|\bmulti\s*audio\b|\bhindi\s*org\b|\bhindi\s*dubbed\b|\bhindi\b|\benglish\b|\btamil\b|\btelugu\b|\bkorean\b|\bfrench\b|\bturkish\b|\bbengali\b|\bmalayalam\b|\bkannada\b|\bdubbed\b/gi,
+			/\bfull\s*movie\b|\bcomplete\s*web\s*series\b|\bcomplete\s*anime\s*series\b|\bcomplete\s*series\b|\bcomplete\s*turkish\s*drama\s*series\b|\bcomplete\s*tv\s*series\b|\bcomplete\b|\bnetflix\s*original\b|\bnetflix\b|\boriginal\b|\bseries\b|\banime\s*series\b|\bdrama\s*series\b/gi,
+			/\bseason\s*\d+(?:-\d+)?\b/gi,              // Season 1, Season 1-2
+			/\bs\d{1,2}(?:e\d{1,3})?\b/gi,              // S01, S01E05
+			/\bep?\d{1,3}\b/gi,                          // Ep30
+			/\bx264\b|\bx265\b|\bhevc\b|\baac\d?\b|\besub\b|\bsubtitles?\b|\bwith\s*subtitles?\b/gi,
+			/\blink\b|\badded\b/gi,
+		];
+
+		for (const pattern of noisePatterns) {
+			title = title.replace(pattern, ' ');
+		}
+
+		// Remove leftover bracket/parenthesis characters
+		title = title.replace(/[\(\)\[\]\{\}]/g, ' ');
+
+		// Normalize space
+		title = title.replace(/\s+/g, ' ').trim();
+
+		// Fallback if title became too short
+		if (!title || title.length < 2) {
+			title = raw.replace(/\.[^.]+$/, '').replace(/[._]/g, ' ').trim();
+		}
+
+		return title;
+	}
+
+	/**
 	 * Parse a raw filename into structured metadata.
 	 *
 	 * @param {string} filename - Raw file name e.g. from document.file_name
@@ -40,7 +106,7 @@ export class FilenameParser {
 		const isHevc = FILENAME_PATTERNS.HEVC.test(normalized);
 		const isHdr = FILENAME_PATTERNS.HDR.test(normalized);
 		const size = FilenameParser._extractSize(filename);
-		const movieTitle = normalized;
+		const movieTitle = FilenameParser.cleanMovieTitle(filename);
 		const audioTracks = FilenameParser._extractAudio(normalized);
 
 		return {

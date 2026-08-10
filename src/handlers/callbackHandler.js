@@ -33,7 +33,9 @@ export class CallbackHandler {
 	}
 
 	async sendFileMessage(chatId, queryId, file, movie = null) {
-		await this.telegramCallback.toast(queryId, '📤 Sending file…');
+		if (queryId) {
+			await this.telegramCallback.toast(queryId, '📤 Sending file…');
+		}
 
 		const fileCaption = file.fileName || movie?.title || 'File';
 

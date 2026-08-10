@@ -73,7 +73,7 @@ export async function handleWebhookRequest(request, env) {
   const cacheService = new CacheService(config.cache, baseRepo);
   const omdbService = new OmdbService(config.omdbApiKey, cacheService);
   const searchService = new SearchService(movieRepo, cacheService);
-  const movieIndexService = new MovieIndexService(movieRepo, fileRepo, movieFileRepo, channelRepo, config.queue);
+  const movieIndexService = new MovieIndexService(movieRepo, fileRepo, movieFileRepo, channelRepo, config.queue, omdbService);
   const analyticsService = new AnalyticsService(analyticsRepo);
   const broadcastService = new BroadcastService(userRepo, baseRepo, config.queue, telegramMessages);
 

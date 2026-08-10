@@ -19,9 +19,11 @@ import { CALLBACK, EMOJI, PAGINATION } from '../config/constants.js';
  * @param {number}  movieId
  * @returns {object} Telegram InlineKeyboardMarkup
  */
+const WORKER_DOMAIN = 'https://my-telegram-bot.karangade6630.workers.dev/';
+
 export function buildQualityKeyboard(files, movieId, page = 1) {
 	if (!files || files.length === 0) {
-		return { inline_keyboard: [[{ text: 'No files available', url: 'https://google.com' }]] };
+		return { inline_keyboard: [[{ text: 'No files available', url: WORKER_DOMAIN }]] };
 	}
 
 	const perPage = 10;
@@ -31,13 +33,15 @@ export function buildQualityKeyboard(files, movieId, page = 1) {
 	const endIndex = startIndex + perPage;
 	const limitedFiles = files.slice(startIndex, endIndex);
 
-	// One button per file — only uses url property, no callback_data
+	const now = Date.now();
+
+	// One button per file — links to worker web page with fileId & timestamp
 	const rows = limitedFiles.map((file) => {
 		const size = file.size ? `[${file.size}] ` : '';
 		const rawName = file.fileName || file.qualityLabel || 'Unknown File';
 		// Telegram button text max is ~200 chars; cap at 180 to keep UI clean
 		const label = `${size}${rawName}`.slice(0, 180);
-		const url = file.url || 'https://google.com';
+		const url = `${WORKER_DOMAIN}?fileId=${file.id}&t=${now}`;
 		return [{ text: label, url }];
 	});
 
@@ -60,7 +64,7 @@ export function buildMovieInfoKeyboard(movieId, trailerUrl, imdbUrl) {
 	if (row1.length) rows.push(row1);
 
 	rows.push([
-		{ text: `${EMOJI.DOWNLOAD} Get Files`, url: 'https://google.com' },
+		{ text: `${EMOJI.DOWNLOAD} Get Files`, url: `${WORKER_DOMAIN}?movieId=${movieId}&t=${Date.now()}` },
 		{ text: `${EMOJI.BOOKMARK} Watchlist`, callback_data: `${CALLBACK.WATCHLIST_ADD}:${movieId}` },
 		{ text: `${EMOJI.HEART} Favorite`, callback_data: `${CALLBACK.FAVORITE_ADD}:${movieId}` },
 	]);
@@ -76,7 +80,7 @@ export function buildMovieInfoKeyboard(movieId, trailerUrl, imdbUrl) {
 
 /**
  * Build a search results list keyboard — one button per movie result.
- * Each button shows "[size] Title (year)" and opens https://google.com when clicked.
+ * Each button shows "[size] Title (year)" and opens the worker web page when clicked.
  *
  * @param {import('../models/Movie.js').Movie[]} movies
  * @param {string}  query
@@ -86,6 +90,7 @@ export function buildMovieInfoKeyboard(movieId, trailerUrl, imdbUrl) {
  */
 export function buildSearchResultsKeyboard(movies, query, page, totalPages) {
 	const safeQuery = String(query || '').slice(0, 40);
+	const now = Date.now();
 	const rows = movies.map((movie) => {
 		// Build label: show file size if available, then title + year
 		const sizeLabel = movie.totalSize ? `[${movie.totalSize}] ` : '';
@@ -93,7 +98,7 @@ export function buildSearchResultsKeyboard(movies, query, page, totalPages) {
 		return [
 			{
 				text: `${sizeLabel}${movie.title}${yearLabel}`,
-				url: 'https://google.com',
+				url: `${WORKER_DOMAIN}?movieId=${movie.id}&t=${now}`,
 			},
 		];
 	});

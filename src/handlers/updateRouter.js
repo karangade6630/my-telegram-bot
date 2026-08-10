@@ -18,16 +18,6 @@ export class UpdateRouter {
 	 */
 	constructor(deps) {
 		this.deps = deps;
-		this.commandHandler = new CommandHandler(deps.telegramMessages, deps.telegramMedia, deps.searchService);
-		this.messageHandler = new MessageHandler(
-			deps.searchService,
-			deps.telegramMessages,
-			deps.telegramMedia,
-			deps.movieFileRepo,
-			deps.fileRepo,
-			deps.logger,
-			deps.config?.queue,
-		);
 		this.callbackHandler = new CallbackHandler(
 			deps.telegramCallback,
 			deps.telegramMedia,
@@ -37,6 +27,22 @@ export class UpdateRouter {
 			deps.userRepo,
 			deps.config.queue,
 			deps.searchService,
+		);
+		this.commandHandler = new CommandHandler(
+			deps.telegramMessages,
+			deps.telegramMedia,
+			deps.searchService,
+			deps.fileRepo,
+			this.callbackHandler,
+		);
+		this.messageHandler = new MessageHandler(
+			deps.searchService,
+			deps.telegramMessages,
+			deps.telegramMedia,
+			deps.movieFileRepo,
+			deps.fileRepo,
+			deps.logger,
+			deps.config?.queue,
 		);
 		this.inlineHandler = new InlineHandler(deps.telegramInline, deps.searchService, deps.config.botUsername);
 		this.channelPostHandler = new ChannelPostHandler(deps.movieIndexService);

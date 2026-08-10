@@ -1,11 +1,14 @@
 /**
  * @fileoverview MovieIndexService — Channel indexing pipeline.
  * Extracts metadata from Telegram channel posts, upserts movies & files, and links them.
+ * Now uses FilenameParser.cleanMovieTitle for accurate poster/OMDb lookups and
+ * enriches movies with full OMDb metadata (description, genre, cast, director, rating, etc.).
  *
  * @module services/movieIndexService
  */
 
 import { MovieParser } from '../parsers/MovieParser.js';
+import { FilenameParser } from '../parsers/FilenameParser.js';
 import { Movie } from '../models/Movie.js';
 import { File as FileModel } from '../models/File.js';
 import { MovieIndexed } from '../events/MovieIndexed.js';
@@ -21,27 +24,35 @@ export class MovieIndexService {
    * @param {import('../repositories/MovieFileRepository.js').MovieFileRepository} movieFileRepo
    * @param {import('../repositories/ChannelRepository.js').ChannelRepository} channelRepo
    * @param {import('../interfaces/Queue.js').IQueue} [queue]
+   * @param {import('./omdbService.js').OmdbService} [omdbService]
    */
-  constructor(movieRepo, fileRepo, movieFileRepo, channelRepo, queue = null) {
+  constructor(movieRepo, fileRepo, movieFileRepo, channelRepo, queue = null, omdbService = null) {
     this.movieRepo = movieRepo;
     this.fileRepo = fileRepo;
     this.movieFileRepo = movieFileRepo;
     this.channelRepo = channelRepo;
     this.queue = queue;
+    this.omdbService = omdbService;
   }
 
-  async _fetchPoster(title, fileName) {
+  /**
+   * Fetch poster URL using cleaned title variants.
+   * @param {string} cleanedTitle - Already cleaned movie title
+   * @param {string} rawFileName - Raw filename for fallback queries
+   * @returns {Promise<string|null>}
+   */
+  async _fetchPoster(cleanedTitle, rawFileName) {
+    const rawCleaned = FilenameParser.cleanMovieTitle(rawFileName);
     const searchQueries = [
-      title,
-      fileName,
-      title.replace(/\b[Ss]\d{1,2}[Ee]\d{1,3}\b.*/gi, ''),
-      title.replace(/[\d\s]+$/g, '')
+      cleanedTitle,
+      rawCleaned,
+      cleanedTitle.replace(/\b[Ss]\d{1,2}[Ee]\d{1,3}\b.*/gi, '').trim(),
+      cleanedTitle.replace(/[\d\s]+$/g, '').trim(),
     ];
 
     for (const query of [...new Set(searchQueries)].filter(q => q && q.length > 2)) {
-      const cleaned = query.trim().replace(/[._]/g, ' ');
-      const url = `${POSTER_API_URL}?search=${encodeURIComponent(cleaned)}`;
-      logger.info(`Fetching poster for "${title}" (query: "${cleaned}"): ${url}`);
+      const url = `${POSTER_API_URL}?search=${encodeURIComponent(query)}`;
+      logger.info(`Fetching poster (query: "${query}"): ${url}`);
       try {
         const response = await fetch(url);
         const data = await response.json();
@@ -49,10 +60,56 @@ export class MovieIndexService {
           return data.movies[0].poster_url;
         }
       } catch (error) {
-        logger.warn(`Failed to fetch poster for ${cleaned}:`, error);
+        logger.warn(`Failed to fetch poster for "${query}":`, error);
       }
     }
     return null;
+  }
+
+  /**
+   * Enrich a movie record with OMDb metadata if available.
+   * Uses cleanMovieTitle to strip noise before querying OMDb.
+   *
+   * @param {number} movieId
+   * @param {string} rawTitle - The raw/cleaned title from the parser
+   * @param {number|null} year
+   * @returns {Promise<void>}
+   */
+  async _enrichWithOmdb(movieId, rawTitle, year) {
+    if (!this.omdbService) return;
+
+    try {
+      const cleanTitle = FilenameParser.cleanMovieTitle(rawTitle);
+      logger.info(`Enriching movie #${movieId} via OMDb with cleaned title: "${cleanTitle}"`);
+
+      const meta = await this.omdbService.fetchMovieMetadata(cleanTitle, year);
+      if (!meta) {
+        logger.info(`No OMDb metadata found for "${cleanTitle}"`);
+        return;
+      }
+
+      // Build update payload — only set fields that OMDb returned
+      const updateData = {};
+      if (meta.imdbId)        updateData.imdb_id        = meta.imdbId;
+      if (meta.imdbRating)    updateData.imdb_rating     = meta.imdbRating;
+      if (meta.ratingCount)   updateData.imdb_votes      = meta.ratingCount;
+      if (meta.description)   updateData.description     = meta.description;
+      if (meta.genre)         updateData.genre           = meta.genre;
+      if (meta.directors)     updateData.director        = meta.directors;
+      if (meta.cast)          updateData.cast            = meta.cast;
+      if (meta.duration)      updateData.runtime         = meta.duration;
+      if (meta.contentRating) updateData.content_rating  = meta.contentRating;
+      if (meta.type)          updateData.type            = meta.type;
+      // Use OMDb poster if poster_url is missing
+      if (meta.imdbId)        updateData.poster_url      = `https://img.omdbapi.com/?apikey=${this.omdbService.apiKey}&i=${meta.imdbId}`;
+
+      if (Object.keys(updateData).length > 0) {
+        await this.movieRepo.updateMetadata(movieId, updateData);
+        logger.info(`Enriched movie #${movieId}: ${meta.title} (${meta.year}) [${meta.imdbId}]`);
+      }
+    } catch (err) {
+      logger.warn(`OMDb enrichment failed for movie #${movieId}:`, err.message || err);
+    }
   }
 
   /**
@@ -74,6 +131,8 @@ export class MovieIndexService {
     }
 
     const movieModel = Movie.fromParsed(parsed);
+
+    // Use cleaned title for poster search
     const posterUrl = await this._fetchPoster(parsed.movieTitle, parsed.fileName);
     if (posterUrl) movieModel.posterUrl = posterUrl;
 
@@ -99,6 +158,9 @@ export class MovieIndexService {
       if (parsed.messageId && parsed.channelId) {
         await this.channelRepo.updateLastIndexedMsg(parsed.channelId, parsed.messageId);
       }
+
+      // Enrich with OMDb metadata (non-blocking — failures don't break indexing)
+      await this._enrichWithOmdb(movieId, parsed.movieTitle, parsed.year);
 
       const event = new MovieIndexed({
         telegramFileId: parsed.telegramFileId,

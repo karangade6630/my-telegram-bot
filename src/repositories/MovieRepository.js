@@ -184,6 +184,12 @@ export class MovieRepository extends BaseRepository {
          title          = COALESCE(excluded.title, movies.title),
          poster_url     = COALESCE(excluded.poster_url, movies.poster_url),
          language       = COALESCE(excluded.language, movies.language),
+         genre          = COALESCE(excluded.genre, movies.genre),
+         description    = COALESCE(excluded.description, movies.description),
+         director       = COALESCE(excluded.director, movies.director),
+         cast           = COALESCE(excluded.cast, movies.cast),
+         runtime        = COALESCE(excluded.runtime, movies.runtime),
+         content_rating = COALESCE(excluded.content_rating, movies.content_rating),
          updated_at     = excluded.updated_at`,
       [
         data.slug, data.title, data.original_title ?? null, data.year ?? null,

@@ -5,17 +5,21 @@ import { SearchService } from '../src/services/searchService.js';
 import { extractQueryFromMessage } from '../src/handlers/callbackHandler.js';
 
 describe('Movie AutoFilter worker', () => {
-	it('responds with the bot health status on GET / (unit style)', async () => {
+	it('responds with HTML on GET / (unit style)', async () => {
 		const request = new Request('http://example.com');
 		const ctx = createExecutionContext();
 		const response = await worker.fetch(request, env, ctx);
 		await waitOnExecutionContext(ctx);
-		expect(await response.text()).toMatchInlineSnapshot(`"🤖 Telegram Movie AutoFilter Bot is online and healthy."`);
+		const text = await response.text();
+		expect(text).toContain('<!doctype html>');
+		expect(text).toContain('id="root"');
 	});
 
-	it('responds with the bot health status on GET / (integration style)', async () => {
+	it('responds with HTML on GET / (integration style)', async () => {
 		const response = await SELF.fetch('http://example.com');
-		expect(await response.text()).toMatchInlineSnapshot(`"🤖 Telegram Movie AutoFilter Bot is online and healthy."`);
+		const text = await response.text();
+		expect(text).toContain('<!doctype html>');
+		expect(text).toContain('id="root"');
 	});
 });
 

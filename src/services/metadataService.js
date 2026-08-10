@@ -5,6 +5,7 @@
  */
 
 import { OmdbService } from './omdbService.js';
+import { FilenameParser } from '../parsers/FilenameParser.js';
 import { Logger } from '../utils/logger.js';
 
 const logger = new Logger('MetadataService');
@@ -29,23 +30,29 @@ export class MetadataService {
     const movie = await this.movieRepo.findById(movieId);
     if (!movie || movie.imdbId) return false;
 
-    const meta = await this.omdbService.fetchMovieMetadata(movie.title, movie.year);
+    // Clean the title to strip noise before querying OMDb
+    const cleanTitle = FilenameParser.cleanMovieTitle(movie.title);
+    const meta = await this.omdbService.fetchMovieMetadata(cleanTitle, movie.year);
     if (!meta) return false;
 
-    await this.movieRepo.updateMetadata(movieId, {
-      imdb_id: meta.imdbId,
-      imdb_rating: meta.imdbRating,
-      imdb_votes: meta.ratingCount,
-      poster_url: meta.poster,
-      director: meta.directors,
-      cast: meta.cast,
-      description: meta.description,
-      genre: meta.genre,
-      runtime: meta.duration,
-      content_rating: meta.contentRating,
-    });
+    const updateData = {};
+    if (meta.imdbId)        updateData.imdb_id        = meta.imdbId;
+    if (meta.imdbRating)    updateData.imdb_rating     = meta.imdbRating;
+    if (meta.ratingCount)   updateData.imdb_votes      = meta.ratingCount;
+    if (meta.description)   updateData.description     = meta.description;
+    if (meta.genre)         updateData.genre           = meta.genre;
+    if (meta.directors)     updateData.director        = meta.directors;
+    if (meta.cast)          updateData.cast            = meta.cast;
+    if (meta.duration)      updateData.runtime         = meta.duration;
+    if (meta.contentRating) updateData.content_rating  = meta.contentRating;
+    if (meta.imdbId)        updateData.poster_url      = `https://img.omdbapi.com/?apikey=${this.omdbService.apiKey}&i=${meta.imdbId}`;
 
-    logger.info(`Enriched metadata for movie "${movie.title}"`, { movieId, imdbId: meta.imdbId });
+    if (Object.keys(updateData).length > 0) {
+      await this.movieRepo.updateMetadata(movieId, updateData);
+    }
+
+    logger.info(`Enriched metadata for movie "${movie.title}" → "${cleanTitle}"`, { movieId, imdbId: meta.imdbId });
     return true;
   }
 }
+
