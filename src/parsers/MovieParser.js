@@ -28,7 +28,7 @@ export class MovieParser {
     if (!message) return null;
 
     // ── Step 1: Get Telegram file object ─────────────────────
-    const tgFile = message.video || message.document || null;
+    const tgFile = message.video || message.document || message.audio || null;
     if (!tgFile) return null;   // no file attachment — ignore
 
     const fileId       = tgFile.file_id;
@@ -39,24 +39,33 @@ export class MovieParser {
     const isVideo      = !!message.video || mimeType.startsWith('video/');
     const caption      = message.caption ?? '';
 
-    // ── Step 2: Get raw title as-is from file/caption ─────────
-    let movieTitle = rawFilename.trim();
-    if (!movieTitle && caption) {
-      movieTitle = caption.split('\n')[0].trim();
+    // ── Step 2: Determine primary title source ────────────────
+    // If rawFilename is missing or generic (e.g., video.mp4, VID_..., file.mkv), prefer caption
+    const isGenericFilename = !rawFilename || /^(video|vid|file|doc|document|movie|media|clip|output|input)[\d_\-.]*$/i.test(rawFilename.replace(/\.[a-z0-9]+$/i, '').trim());
+    let sourceForTitle = rawFilename;
+    if ((isGenericFilename || !sourceForTitle) && caption) {
+      sourceForTitle = caption.split('\n')[0].trim();
     }
-    if (!movieTitle) {
-      movieTitle = 'Unknown';
+    if (!sourceForTitle) {
+      sourceForTitle = 'Unknown';
     }
 
-    const fileData = FilenameParser.parse(rawFilename || movieTitle);
+    const fileData = FilenameParser.parse(sourceForTitle);
     const type     = MovieParser._detectType({ movieTitle: fileData.movieTitle, season: fileData?.season, episode: fileData?.episode, rawCaption: caption });
-    const slug     = slugify(fileData.movieTitle);
+    
+    // Preserve full raw title (stripped of file extension only) for DB and Admin Panel
+    const fullRawTitle = sourceForTitle
+      .replace(/\.(mkv|mp4|avi|mov|wmv|flv|webm|m4v|3gp|ts)$/i, '')
+      .replace(/_/g, ' ')
+      .trim();
+    
+    const slug = slugify(fullRawTitle);
 
     // ── Step 3: Assemble result ──────────────────────────────
     return {
-      // Movie-level data (title is strictly as-is without formatting)
+      // Movie-level data (full title preserved as-is for DB & Admin Panel)
       slug,
-      movieTitle: fileData.movieTitle,
+      movieTitle: fullRawTitle || fileData.movieTitle || 'Unknown',
       year:        fileData?.year ?? null,
       type,
       language:    fileData?.language ?? null,

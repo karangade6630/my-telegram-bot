@@ -95,18 +95,19 @@ export class MovieIndexService {
       if (meta.ratingCount)   updateData.imdb_votes      = meta.ratingCount;
       if (meta.description)   updateData.description     = meta.description;
       if (meta.genre)         updateData.genre           = meta.genre;
+      if (meta.language)      updateData.language        = meta.language;
       if (meta.directors)     updateData.director        = meta.directors;
       if (meta.cast)          updateData.cast            = meta.cast;
       if (meta.duration)      updateData.runtime         = meta.duration;
       if (meta.contentRating) updateData.content_rating  = meta.contentRating;
       if (meta.type)          updateData.type            = meta.type;
-      // Use OMDb poster if poster_url is missing
-      if (meta.imdbId)        updateData.poster_url      = `https://img.omdbapi.com/?apikey=${this.omdbService.apiKey}&i=${meta.imdbId}`;
+      if (meta.posterUrl)     updateData.poster_url      = meta.posterUrl;
+      if (meta.trailerUrl)    updateData.trailer_url     = meta.trailerUrl;
 
       if (Object.keys(updateData).length > 0) {
         await this.movieRepo.updateMetadata(movieId, updateData);
-        // Propagate shared poster URL, merged genres, and merged languages to same-name movies/series/seasons
-        await this.movieRepo.propagateSharedMetadata(cleanTitle, updateData.poster_url, meta.genre, meta.language);
+        // Propagate full enriched metadata to all same-name movies/series/seasons
+        await this.movieRepo.propagateSharedMetadata(cleanTitle, updateData);
         logger.info(`Enriched movie #${movieId}: ${meta.title} (${meta.year}) [${meta.imdbId}]`);
       }
     } catch (err) {
@@ -126,9 +127,12 @@ export class MovieIndexService {
 
     logger.info(`Indexing file from channel post: "${parsed.movieTitle}" (${parsed.quality || 'Unknown'})`);
 
-    const existingFile = await this.fileRepo.findByUniqueId(parsed.uniqueId);
+    const existingFile = await this.fileRepo.findDuplicateFile(parsed.uniqueId, parsed.fileName, parsed.sizeBytes);
     if (existingFile) {
-      logger.info('File already indexed, skipping', { uniqueId: parsed.uniqueId });
+      logger.info('File with exact same name/uniqueId/size already indexed, skipping', {
+        uniqueId: parsed.uniqueId,
+        fileName: parsed.fileName,
+      });
       return { status: 'skipped', fileId: existingFile.id };
     }
 

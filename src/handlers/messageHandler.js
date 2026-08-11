@@ -80,16 +80,8 @@ export class MessageHandler {
           `⚠️ <b>ᴀꜰᴛᴇʀ 5 ᴍɪɴᴜᴛᴇs ᴛʜɪs ᴍᴇssᴀɢᴇ ᴡɪʟʟ ʙᴇ ᴀᴜᴛᴏᴍᴀᴛɪᴄᴀʟʟʏ ᴅᴇʟᴇᴛᴇᴅ</b>`,
         ].join('\n')
       );
-    } else if (searchRes.movies.length === 1) {
-      // Single result match — show movie card with quality buttons
-      const movie = searchRes.movies[0];
-      const files = await this.fileRepo.findByMovieId(movie.id);
-
-      const { text: cardText, keyboard } = MovieHelper.formatMovieSearchResult(movie, files);
-
-      sentMsg = await this.telegramMessages.sendMessage(chatId, cardText, { reply_markup: keyboard });
     } else {
-      // Multiple results — show styled header + file list keyboard
+      // Show styled header + file/movie list keyboard in pagination format for ALL matches
       const header   = searchRes.toHeaderText(requesterName);
       const keyboard = buildSearchResultsKeyboard(
         searchRes.movies,

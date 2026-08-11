@@ -71,7 +71,7 @@ export async function handleWebhookRequest(request, env) {
 
   // Service initialization
   const cacheService = new CacheService(config.cache, baseRepo);
-  const omdbService = new OmdbService(config.omdbApiKey, cacheService);
+  const omdbService = new OmdbService(cacheService);
   const searchService = new SearchService(movieRepo, cacheService);
   const movieIndexService = new MovieIndexService(movieRepo, fileRepo, movieFileRepo, channelRepo, config.queue, omdbService);
   const analyticsService = new AnalyticsService(analyticsRepo);

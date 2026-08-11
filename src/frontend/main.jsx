@@ -466,7 +466,7 @@ const App = () => {
 					const meta = resData.result;
 					setEditFormData((prev) => ({
 						...prev,
-						title: meta.title || prev.title,
+						title: prev.title || meta.title,
 						year: meta.year || prev.year,
 						type: meta.type || prev.type || 'movie',
 						genre: mergeCommaStrings(prev.genre, meta.genre) || meta.genre || prev.genre,
@@ -480,6 +480,7 @@ const App = () => {
 						imdbVotes: meta.imdbVotes || prev.imdbVotes,
 						imdbId: meta.imdbId || prev.imdbId,
 						posterUrl: meta.posterUrl || prev.posterUrl,
+						trailerUrl: meta.trailerUrl || prev.trailerUrl,
 					}));
 					setOmdbStatus('✅ OMDb & IMDb metadata auto-filled successfully! Genres and Languages merged.');
 				} else {
@@ -1155,6 +1156,17 @@ const App = () => {
 											</div>
 
 											<div className="form-group full-width">
+												<label className="form-label">Trailer Video URL (MP4 / YouTube / IMDb Embed)</label>
+												<input
+													type="text"
+													className="form-input"
+													placeholder="https://..."
+													value={editFormData.trailerUrl || ''}
+													onChange={(e) => setEditFormData({ ...editFormData, trailerUrl: e.target.value })}
+												/>
+											</div>
+
+											<div className="form-group full-width">
 												<label className="form-label">Description / Plot Overview</label>
 												<textarea
 													className="form-textarea"
@@ -1319,6 +1331,34 @@ const App = () => {
 											</div>
 										</div>
 									</div>
+
+									{/* Official Trailer Video Player */}
+									{movie?.trailerUrl && (
+										<div className="spec-box" style={{ marginTop: '1.5rem' }}>
+											<div className="spec-box-title">
+												<span>🎥</span>
+												<span>Official IMDb Trailer / Video Preview</span>
+											</div>
+											<div style={{ padding: '0.75rem 0' }}>
+												{movie.trailerUrl.includes('.mp4') ? (
+													<video
+														src={movie.trailerUrl}
+														controls
+														playsInline
+														preload="metadata"
+														style={{ width: '100%', maxHeight: '420px', borderRadius: '8px', background: '#000' }}
+													/>
+												) : (
+													<iframe
+														src={movie.trailerUrl}
+														title={`${movie.title || 'Movie'} Trailer`}
+														style={{ width: '100%', height: '360px', borderRadius: '8px', border: 'none' }}
+														allowFullScreen
+													/>
+												)}
+											</div>
+										</div>
+									)}
 
 									{/* Technical File Specifications Grid */}
 									{file && (

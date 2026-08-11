@@ -35,6 +35,40 @@ export class FileRepository extends BaseRepository {
   }
 
   /**
+   * Find an existing file record by unique_id OR exact file_name (+ size_bytes if available).
+   * Used for deduplicating uploaded or forwarded files with the exact same name.
+   *
+   * @param {string} uniqueId
+   * @param {string|null} fileName
+   * @param {number|null} sizeBytes
+   * @returns {Promise<FileModel|null>}
+   */
+  async findDuplicateFile(uniqueId, fileName = null, sizeBytes = null) {
+    if (uniqueId) {
+      const byUnique = await this.findByUniqueId(uniqueId);
+      if (byUnique) return byUnique;
+    }
+
+    if (fileName && fileName.trim()) {
+      const name = fileName.trim();
+      if (sizeBytes) {
+        const byNameAndSize = await this.first(
+          'SELECT * FROM files WHERE LOWER(file_name) = LOWER(?) AND size_bytes = ?',
+          [name, sizeBytes]
+        );
+        if (byNameAndSize) return FileModel.fromRow(byNameAndSize);
+      }
+      const byName = await this.first(
+        'SELECT * FROM files WHERE LOWER(file_name) = LOWER(?)',
+        [name]
+      );
+      if (byName) return FileModel.fromRow(byName);
+    }
+
+    return null;
+  }
+
+  /**
    * Find a file by Telegram file_id.
    * @param {string} telegramFileId
    * @returns {Promise<FileModel|null>}

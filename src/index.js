@@ -118,11 +118,11 @@ async function handleFileInfoRequest(request, env) {
 		return Response.json({ ok: false, message: 'Content not found' }, { status: 404 });
 	}
 
-	// ── On-demand OMDb enrichment ─────────────────────────────
-	// If movie exists but is missing key metadata, try to fetch from OMDb now
-	if (movie && (!movie.description || !movie.imdbRating || !movie.genre) && env.OMDB_API_KEY) {
+	// ── On-demand metadata enrichment ─────────────────────────
+	// If movie exists but is missing key metadata, try to fetch now
+	if (movie && (!movie.description || !movie.imdbRating || !movie.genre)) {
 		try {
-			const omdb = new OmdbService(env.OMDB_API_KEY);
+			const omdb = new OmdbService();
 			const cleanTitle = FilenameParser.cleanMovieTitle(movie.title);
 			const meta = await omdb.fetchMovieMetadata(cleanTitle, movie.year);
 			if (meta) {
@@ -136,7 +136,7 @@ async function handleFileInfoRequest(request, env) {
 				if (!movie.cast && meta.cast)                   updateData.cast            = meta.cast;
 				if (!movie.runtime && meta.duration)            updateData.runtime         = meta.duration;
 				if (!movie.contentRating && meta.contentRating) updateData.content_rating  = meta.contentRating;
-				if (!movie.posterUrl && meta.imdbId)            updateData.poster_url      = `https://img.omdbapi.com/?apikey=${env.OMDB_API_KEY}&i=${meta.imdbId}`;
+				if (!movie.posterUrl && meta.posterUrl)         updateData.poster_url      = meta.posterUrl;
 
 				if (Object.keys(updateData).length > 0) {
 					await movieRepo.updateMetadata(movie.id, updateData);
@@ -266,6 +266,7 @@ async function handleAdminListMovies(request, env) {
 				imdbVotes: m.imdbVotes,
 				imdbId: m.imdbId,
 				posterUrl: m.posterUrl,
+				trailerUrl: m.trailerUrl,
 				updatedAt: m.updatedAt,
 			})),
 			total,
@@ -308,21 +309,17 @@ async function handleAdminUpdateMovie(request, env) {
 		if (body.runtime !== undefined) updateData.runtime = body.runtime;
 		if (body.contentRating !== undefined) updateData.content_rating = body.contentRating;
 		if (body.posterUrl !== undefined) updateData.poster_url = body.posterUrl;
+		if (body.trailerUrl !== undefined) updateData.trailer_url = body.trailerUrl;
 		if (body.imdbRating !== undefined) updateData.imdb_rating = body.imdbRating ? parseFloat(body.imdbRating) : null;
-		if (body.imdbVotes !== undefined) updateData.imdb_votes = body.imdbVotes ? parseInt(body.imdbVotes, 10) : null;
+		if (body.imdbVotes !== undefined) updateData.imdb_votes = body.imdbVotes ? String(body.imdbVotes) : null;
 		if (body.imdbId !== undefined) updateData.imdb_id = body.imdbId;
 		if (body.slug !== undefined) updateData.slug = body.slug;
 
 		await movieRepo.updateMetadata(body.id, updateData);
 
-		// Propagate shared poster URL, merged genres, and merged languages to same-name movies/series/seasons
+		// Propagate full enriched metadata to all same-name movies/series/seasons
 		const baseTitle = FilenameParser.cleanMovieTitle(body.title || existing.title);
-		await movieRepo.propagateSharedMetadata(
-			baseTitle,
-			body.posterUrl || existing.posterUrl,
-			body.genre,
-			body.language
-		);
+		await movieRepo.propagateSharedMetadata(baseTitle, updateData);
 
 		const updatedMovie = await movieRepo.findById(body.id);
 
@@ -364,22 +361,14 @@ async function handleAdminOmdbSearch(request, env) {
 		return Response.json({ ok: false, message: 'Search query is required' }, { status: 400 });
 	}
 
-	if (!env.OMDB_API_KEY) {
-		return Response.json({ ok: false, message: 'OMDB API key not configured' }, { status: 500 });
-	}
-
 	try {
-		const omdb = new OmdbService(env.OMDB_API_KEY);
+		const omdb = new OmdbService();
 		const cleanTitle = FilenameParser.cleanMovieTitle(query);
 		const meta = await omdb.fetchMovieMetadata(cleanTitle, year);
 
 		if (!meta) {
-			return Response.json({ ok: false, message: 'No OMDb record found for query: ' + cleanTitle });
+			return Response.json({ ok: false, message: 'No metadata found for query: ' + cleanTitle });
 		}
-
-		const posterUrl = meta.imdbId
-			? `https://img.omdbapi.com/?apikey=${env.OMDB_API_KEY}&i=${meta.imdbId}`
-			: null;
 
 		return Response.json({
 			ok: true,
@@ -397,7 +386,7 @@ async function handleAdminOmdbSearch(request, env) {
 				imdbRating: meta.imdbRating || null,
 				imdbVotes: meta.ratingCount || null,
 				imdbId: meta.imdbId || null,
-				posterUrl: posterUrl,
+				posterUrl: meta.posterUrl || null,
 			},
 		});
 	} catch (err) {

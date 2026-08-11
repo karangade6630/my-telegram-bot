@@ -271,47 +271,79 @@ export class MovieRepository extends BaseRepository {
   }
 
   /**
-   * Update movie metadata (from OMDB enrichment).
+   * Update movie metadata (from OMDB / IMDb enrichment or Admin edit).
+   * Automatically strips imdb_id from update if another movie record already has it to prevent UNIQUE constraint errors.
    * @param {number} movieId
    * @param {object} data
    * @returns {Promise<void>}
    */
   async updateMetadata(movieId, data) {
+    if (!data || Object.keys(data).length === 0) return;
+
+    const copyData = { ...data };
+
+    // Prevent SQLITE_CONSTRAINT_UNIQUE on imdb_id if assigned to another movie record
+    if (copyData.imdb_id) {
+      const existingWithImdb = await this.first(
+        'SELECT id FROM movies WHERE imdb_id = ? AND id != ?',
+        [copyData.imdb_id, movieId]
+      );
+      if (existingWithImdb) {
+        delete copyData.imdb_id;
+      }
+    }
+
+    if (Object.keys(copyData).length === 0) return;
+
     const { clause, values } = this.buildSetClause({
-      ...data,
+      ...copyData,
       updated_at: nowISO(),
     });
     await this.run(`UPDATE movies SET ${clause} WHERE id = ?`, [...values, movieId]);
   }
 
   /**
-   * Propagate poster URL, merged genres, and merged languages to all movies/series sharing the same base title.
-   * Ensures same-name movies, seasons, and web-series share the verified poster URL and comma-separated genres/languages.
+   * Propagate poster URL, trailer URL, description, ratings, cast, director, merged genres, and merged languages
+   * to all movies/series sharing the same base title.
+   * Ensures same-name movies, seasons, and web-series share verified metadata.
    *
    * @param {string} baseTitle - Movie or Series title
-   * @param {string|null} posterUrl - Verified poster URL
-   * @param {string|null} genre - New genre tags
-   * @param {string|null} language - New language tags
+   * @param {object|string|null} sharedData - Shared metadata object or poster URL string
+   * @param {string|null} [genre]
+   * @param {string|null} [language]
    * @returns {Promise<void>}
    */
-  async propagateSharedMetadata(baseTitle, posterUrl = null, genre = null, language = null) {
+  async propagateSharedMetadata(baseTitle, sharedData = {}, genre = null, language = null) {
     if (!baseTitle) return;
+
+    const data = (typeof sharedData === 'object' && sharedData !== null)
+      ? sharedData
+      : { poster_url: sharedData, genre, language };
 
     const pattern = `%${baseTitle.trim().toLowerCase()}%`;
     const rows = await this.all(
-      `SELECT id, title, poster_url, genre, language FROM movies WHERE LOWER(title) LIKE ? OR LOWER(slug) LIKE ?`,
+      `SELECT * FROM movies WHERE LOWER(title) LIKE ? OR LOWER(slug) LIKE ?`,
       [pattern, pattern]
     );
 
     for (const row of rows) {
-      const mergedGenre = mergeCommaValues(row.genre, genre);
-      const mergedLang  = mergeCommaValues(row.language, language);
-      const targetPoster = posterUrl || row.poster_url;
+      const mergedGenre = mergeCommaValues(row.genre, data.genre);
+      const mergedLang  = mergeCommaValues(row.language, data.language);
 
       const updateData = {};
       if (mergedGenre && mergedGenre !== row.genre) updateData.genre = mergedGenre;
       if (mergedLang && mergedLang !== row.language) updateData.language = mergedLang;
-      if (targetPoster && targetPoster !== row.poster_url) updateData.poster_url = targetPoster;
+
+      if (data.poster_url && data.poster_url !== row.poster_url) updateData.poster_url = data.poster_url;
+      if (data.trailer_url && data.trailer_url !== row.trailer_url) updateData.trailer_url = data.trailer_url;
+      if (data.description && data.description !== row.description) updateData.description = data.description;
+      if (data.imdb_rating && data.imdb_rating !== row.imdb_rating) updateData.imdb_rating = data.imdb_rating;
+      if (data.imdb_votes && data.imdb_votes !== row.imdb_votes) updateData.imdb_votes = data.imdb_votes;
+      if (data.director && data.director !== row.director) updateData.director = data.director;
+      if (data.cast && data.cast !== row.cast) updateData.cast = data.cast;
+      if (data.year && data.year !== row.year) updateData.year = data.year;
+      if (data.type && data.type !== row.type) updateData.type = data.type;
+      if (data.content_rating && data.content_rating !== row.content_rating) updateData.content_rating = data.content_rating;
 
       if (Object.keys(updateData).length > 0) {
         await this.updateMetadata(row.id, updateData);

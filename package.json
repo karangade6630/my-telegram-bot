@@ -20,6 +20,7 @@
 		"wrangler": "^4.118.0"
 	},
 	"dependencies": {
-		"@vitejs/plugin-react": "^6.0.5"
+		"@vitejs/plugin-react": "^6.0.5",
+		"node-movie": "^1.0.0"
 	}
 }

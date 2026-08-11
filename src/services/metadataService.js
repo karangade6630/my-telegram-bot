@@ -45,7 +45,7 @@ export class MetadataService {
     if (meta.cast)          updateData.cast            = meta.cast;
     if (meta.duration)      updateData.runtime         = meta.duration;
     if (meta.contentRating) updateData.content_rating  = meta.contentRating;
-    if (meta.imdbId)        updateData.poster_url      = `https://img.omdbapi.com/?apikey=${this.omdbService.apiKey}&i=${meta.imdbId}`;
+    if (meta.imdbId)        updateData.poster_url      = meta.posterUrl || null;
 
     if (Object.keys(updateData).length > 0) {
       await this.movieRepo.updateMetadata(movieId, updateData);
