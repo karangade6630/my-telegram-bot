@@ -19,7 +19,7 @@ import { CALLBACK, EMOJI, PAGINATION } from '../config/constants.js';
  * @param {number}  movieId
  * @returns {object} Telegram InlineKeyboardMarkup
  */
-const WORKER_DOMAIN = 'https://my-telegram-bot.karangade6630.workers.dev/';
+const WORKER_DOMAIN = 'https://its-time-to.watch-movie.workers.dev/';
 
 export function buildQualityKeyboard(files, movieId, page = 1) {
 	if (!files || files.length === 0) {
@@ -243,7 +243,7 @@ export function buildWatchlistItemKeyboard(movieId) {
 	return {
 		inline_keyboard: [
 			[
-				{ text: `${EMOJI.DOWNLOAD} Get Files`, url: 'https://google.com' },
+				{ text: `${EMOJI.DOWNLOAD} Get Files`, url: 'https://its-my-telegram-bot.com/files' },
 				{ text: '🗑 Remove', callback_data: `${CALLBACK.WATCHLIST_RM}:${movieId}` },
 			],
 		],
