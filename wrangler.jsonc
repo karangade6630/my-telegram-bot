@@ -16,13 +16,13 @@
 		{
 			"binding": "DB",
 			"database_name": "movie_bot",
-			"database_id": "7de6af6b-6016-4847-a544-1c9f8cb8fbdf",
+			"database_id": "c723091c-0cc3-49db-b9ba-dc8c074d307b",
 		},
 	],
 	"kv_namespaces": [
 		{
 			"binding": "KV",
-			"id": "e486cd8dfd53426c8932cb15c6122552",
+			"id": "d6ddfc494900437aa29a6e3654adfcd6",
 		},
 	],
 	"queues": {
