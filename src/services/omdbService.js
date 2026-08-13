@@ -141,6 +141,11 @@ function parseISO8601Duration(durationStr) {
 	return [hours, minutes].filter(Boolean).join(' ') || durationStr;
 }
 
+function stripTrailingReleaseGroupTags(text) {
+	if (!text) return text;
+	return text.replace(/(?:\s+[A-Z0-9]{2,8})+$/g, '').trim();
+}
+
 // Shared regex fragment for release-tag tokens (resolution/source/codec/lang/etc.)
 // used both to strip tags from a query and to cut an episode subtitle short at
 // the first tag that follows it.
@@ -197,6 +202,8 @@ function cleanQuery(query) {
 			}
 		}
 	}
+
+	cleaned = stripTrailingReleaseGroupTags(cleaned);
 
 	return { cleaned, season, episode };
 }
@@ -322,8 +329,9 @@ function extractTitleInfo(rawTitle) {
 	const name = year ? cleaned.replace(year, '').replace(/\s+/g, ' ').trim() : cleaned;
 
 	const type = explicitType || (season ? 'series' : 'movie');
+	const typeHint = explicitType || (season ? 'series' : null);
 
-	return { name: name || cleaned || working, year, type, season, episode, episodeTitle: extractEpisodeTitle(afterMarker) };
+	return { name: name || cleaned || working, year, type, typeHint, season, episode, episodeTitle: extractEpisodeTitle(afterMarker) };
 }
 
 /**
@@ -474,12 +482,19 @@ async function imdbSuggestionSearch(query) {
  */
 function generateQueryVariants(rawTitle) {
 	const info = extractTitleInfo(rawTitle);
-	const { name, year, type, season, episode } = info;
+	const { name, year, type, typeHint, season, episode } = info;
 
 	const variants = new Set();
 	if (name) {
 		variants.add(name);
 		if (year) variants.add(`${name} ${year}`);
+
+		const words = name.split(/\s+/).filter(Boolean);
+		if (words.length >= 3) {
+			variants.add(words.slice(0, Math.min(5, words.length)).join(' '));
+			variants.add(words.slice(0, Math.min(4, words.length)).join(' '));
+			variants.add(words.slice(0, Math.min(3, words.length)).join(' '));
+		}
 	}
 
 	// Legacy cleaned-string variant, kept as a looser backstop in case
@@ -490,7 +505,7 @@ function generateQueryVariants(rawTitle) {
 		variants.add(cleaned);
 	}
 
-	return { variants: [...variants].filter(Boolean), year, season, episode, name, type };
+	return { variants: [...variants].filter(Boolean), year, season, episode, name, type, typeHint };
 }
 
 /**
@@ -513,6 +528,14 @@ function pickBestCandidate(candidates, primaryQuery, year, isLikelySeries) {
 	return scored[0];
 }
 
+function buildSearchQuery(name, year, typeHint) {
+	const parts = [];
+	if (name) parts.push(name.trim());
+	if (year) parts.push(String(year).trim());
+	if (typeHint) parts.push(typeHint.trim());
+	return parts.filter(Boolean).join(' ').trim();
+}
+
 /**
  * Resolves an IMDb ID for a free-text title / filename using, in order: the
  * suggestion API (multiple variants, scored), Google search scraping, Bing search
@@ -527,15 +550,48 @@ function pickBestCandidate(candidates, primaryQuery, year, isLikelySeries) {
  */
 async function resolveImdbId(rawTitle) {
 	if (!rawTitle) return null;
-	const { variants, year, season, episode, name, type } = generateQueryVariants(rawTitle);
+	const { variants, year, season, episode, name, type, typeHint } = generateQueryVariants(rawTitle);
 	if (!variants.length) return null;
 
-	// The clean extracted name (not variants[0], which may reorder) is what we
-	// score candidates against and what seeds the Google/Bing fallback queries.
 	const primaryQuery = name || variants[0];
 	const isLikelySeries = type === 'series';
+	const baseSearchQuery = buildSearchQuery(name, year, typeHint || (isLikelySeries ? 'tv series' : null));
 
-	logger.debug('Resolving IMDb ID', { rawTitle, primaryQuery, year, season, episode, type });
+	logger.debug('Resolving IMDb ID', { rawTitle, primaryQuery, baseSearchQuery, year, season, episode, type, typeHint });
+
+	// Fast path: try the IMDb suggestion API on a concise, constructed query
+	// (e.g. "Name 2024 tv series" or "Name 2024 movie"). This is light-weight
+	// and much faster than scraping Google/Bing.
+	const quickQueries = [];
+	if (baseSearchQuery) quickQueries.push(baseSearchQuery);
+	const quickFallbackQuery = buildSearchQuery(name, year, null);
+	if (quickFallbackQuery && quickFallbackQuery !== baseSearchQuery) quickQueries.push(quickFallbackQuery);
+
+	try {
+		for (const quickQuery of quickQueries) {
+			const quick = await imdbSuggestionSearch(quickQuery);
+			if (quick && quick.length) {
+				const qcands = quick.map((item) => ({
+					imdbId: item.id,
+					title: item.l,
+					year: item.y ? String(item.y) : null,
+					type: item.q || item.qid || null,
+				}));
+				const qbest = pickBestCandidate(qcands, primaryQuery, year, isLikelySeries);
+				if (qbest && qbest.score >= 0.35) {
+					return {
+						imdbId: qbest.imdbId,
+						confidence: qbest.score >= 0.85 ? 'high' : qbest.score >= 0.55 ? 'medium' : 'low',
+						matchedTitle: qbest.title || null,
+						season,
+						episode,
+					};
+				}
+			}
+		}
+	} catch (e) {
+		logger.debug(`Quick suggestion search failed: ${e.message}`);
+	}
 
 	// ── STEP 1: IMDb Suggestion API across all variants, in parallel ──
 	const batches = await Promise.allSettled(variants.map((v) => imdbSuggestionSearch(v)));
@@ -567,9 +623,9 @@ async function resolveImdbId(rawTitle) {
 	// ── STEP 2: Google Search scrape fallback ──
 	// Built from the clean name + year + type hint, e.g. "Skins imdb tv series" or
 	// "Chum 2026 imdb movie" — not the raw release filename.
-	const typeHint = isLikelySeries ? 'tv series' : 'movie';
-	const searchQuery = `${primaryQuery}${year ? ' ' + year : ''} imdb ${typeHint}`;
-	const googleUrl = `https://www.google.com/search?q=${encodeURIComponent(searchQuery)}`;
+	const searchTypeHint = typeHint || (isLikelySeries ? 'tv series' : null);
+	const googleQuery = `${primaryQuery}${year ? ' ' + year : ''} imdb${searchTypeHint ? ` ${searchTypeHint}` : ''}`;
+	const googleUrl = `https://www.google.com/search?q=${encodeURIComponent(googleQuery)}`;
 	const googleHtml = await fetchHtml(googleUrl);
 	if (googleHtml) {
 		const imdbLinkMatch = googleHtml.match(/href=["'](?:\/url\?q=)?(https?:\/\/(?:www\.)?imdb\.com\/title\/(tt\d+)[^"']*)["']/i);
@@ -579,7 +635,7 @@ async function resolveImdbId(rawTitle) {
 	}
 
 	// ── STEP 3: Bing Search scrape fallback ──
-	const bingUrl = `https://www.bing.com/search?q=${encodeURIComponent(`${primaryQuery}${year ? ' ' + year : ''} imdb ${typeHint}`)}`;
+	const bingUrl = `https://www.bing.com/search?q=${encodeURIComponent(`${primaryQuery}${year ? ' ' + year : ''} imdb${searchTypeHint ? ` ${searchTypeHint}` : ''}`)}`;
 	const bingHtml = await fetchHtml(bingUrl);
 	if (bingHtml) {
 		const bingMatch = bingHtml.match(/https?:\/\/(?:www\.)?imdb\.com\/title\/(tt\d+)/i);

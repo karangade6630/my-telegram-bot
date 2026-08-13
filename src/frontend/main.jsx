@@ -251,7 +251,6 @@ const App = () => {
 	const [expiredNotice, setExpiredNotice] = useState(false);
 	const [countdown, setCountdown] = useState(10);
 	const [progress, setProgress] = useState(0);
-
 	// Public Blog state
 	const [recentMovies, setRecentMovies] = useState([]);
 	const [searchQuery, setSearchQuery] = useState('');
@@ -280,6 +279,11 @@ const App = () => {
 	const [omdbQuery, setOmdbQuery] = useState('');
 	const [omdbStatus, setOmdbStatus] = useState('');
 	const [saveStatus, setSaveStatus] = useState('');
+
+	// Preview / Confirmation Modal State
+	const [previewResult, setPreviewResult] = useState(null);
+	const [showPreviewModal, setShowPreviewModal] = useState(false);
+	console.log({ progress, countdown, previewResult, showPreviewModal });
 
 	useEffect(() => {
 		const pathname = window.location.pathname;
@@ -319,12 +323,16 @@ const App = () => {
 		}
 
 		// Fetch file & movie details from worker backend API
-		const apiUrl = `/api/file-info?${searchParams.toString()}`;
+		const apiUrl = `https://its-time-to.watch-movie.workers.dev/api/file-info?${searchParams.toString()}`;
 		fetch(apiUrl)
 			.then((res) => res.json())
 			.then((resData) => {
+				console.debug('[frontend] /api/file-info response', resData);
 				if (resData.ok) {
-					setData(resData);
+					// Support wrapped payloads: { ok, data: { movie, file } } or { ok, result: { ... } }
+					const payload = resData.data ?? resData.result ?? resData;
+					console.debug('[frontend] /api/file-info payload', payload);
+					setData(payload);
 					setMode('bot_visitor');
 				} else {
 					if (resData.expired) setExpiredNotice(true);
@@ -332,21 +340,43 @@ const App = () => {
 					loadRecentMovies();
 				}
 			})
-			.catch(() => {
+			.catch((err) => {
+				console.error('[frontend] /api/file-info fetch error', err);
 				setMode('normal_blog');
 				loadRecentMovies();
 			});
 	}, []);
 
+	// Ensure page scrolling is locked while preview modal is open so overlay is visible and background doesn't scroll
+	useEffect(() => {
+		try {
+			if (showPreviewModal) {
+				document.body.classList.add('modal-open');
+			} else {
+				document.body.classList.remove('modal-open');
+			}
+		} catch (e) {
+			// Defensive - ignore when document not available in test env
+		}
+		return () => {
+			try {
+				document.body.classList.remove('modal-open');
+			} catch (e) {}
+		};
+	}, [showPreviewModal]);
+
 	const loadRecentMovies = () => {
 		fetch('/api/recent-movies')
 			.then((res) => res.json())
 			.then((resData) => {
+				console.debug('[frontend] /api/recent-movies response', resData);
 				if (resData.ok && resData.movies && resData.movies.length > 0) {
 					setRecentMovies(resData.movies);
 				}
 			})
-			.catch(() => {});
+			.catch((err) => {
+				console.error('[frontend] /api/recent-movies fetch error', err);
+			});
 	};
 
 	// Admin Password Login Verification
@@ -390,7 +420,7 @@ const App = () => {
 
 	const loadAdminMovies = (page = 1, search = '', genre = '') => {
 		setAdminLoading(true);
-		const url = `/api/admin/movies?page=${page}&limit=10&search=${encodeURIComponent(search)}&genre=${encodeURIComponent(genre)}`;
+		const url = `https://its-time-to.watch-movie.workers.dev/api/admin/movies?page=${page}&limit=10&search=${encodeURIComponent(search)}&genre=${encodeURIComponent(genre)}`;
 		fetch(url)
 			.then((res) => res.json())
 			.then((resData) => {
@@ -458,7 +488,7 @@ const App = () => {
 	const handleOmdbSearch = () => {
 		if (!omdbQuery.trim()) return;
 		setOmdbStatus('🔍 Searching OMDb & IMDb metadata...');
-		const url = `/api/admin/omdb-search?query=${encodeURIComponent(omdbQuery)}&year=${editFormData.year || ''}`;
+		const url = `https://its-time-to.watch-movie.workers.dev/api/admin/omdb-search?query=${encodeURIComponent(omdbQuery)}&year=${editFormData.year || ''}`;
 		fetch(url)
 			.then((res) => res.json())
 			.then((resData) => {
@@ -495,8 +525,39 @@ const App = () => {
 	// Save Movie Updates
 	const handleSaveMovie = (e) => {
 		e.preventDefault();
-		setSaveStatus('💾 Saving updates to D1 Database...');
-		fetch('/api/admin/movies/update', {
+		setSaveStatus('🔎 Previewing changes...');
+		// First request a preview of affected rows
+		fetch('https://its-time-to.watch-movie.workers.dev/api/admin/movies/update', {
+			method: 'POST',
+			headers: { 'Content-Type': 'application/json' },
+			body: JSON.stringify({ ...editFormData, preview: true }),
+		})
+			.then((res) => res.json())
+			.then((resData) => {
+				if (resData.ok && resData.preview) {
+					setPreviewResult(resData.preview);
+					if (resData.preview.preview && resData.preview.preview.length > 0) {
+						setShowPreviewModal(true);
+						setSaveStatus('⚠️ Confirm propagation to affected entries');
+					} else {
+						// No propagated changes; apply directly
+						console.error('Preview result:', resData.preview);
+						applyConfirmedSave();
+					}
+				} else {
+					setSaveStatus(`❌ Preview failed: ${resData.message || 'unknown'}`);
+					console.error('Preview failed response:', resData);
+				}
+			})
+			.catch((err) => {
+				setSaveStatus(`❌ Preview failed: ${err.message}`);
+				console.error('Preview failed error:', err);
+			});
+	};
+
+	const applyConfirmedSave = () => {
+		setSaveStatus('💾 Applying updates...');
+		fetch('https://its-time-to.watch-movie.workers.dev/api/admin/movies/update', {
 			method: 'POST',
 			headers: { 'Content-Type': 'application/json' },
 			body: JSON.stringify(editFormData),
@@ -505,12 +566,15 @@ const App = () => {
 			.then((resData) => {
 				if (resData.ok) {
 					setSaveStatus('✅ Saved successfully!');
+					setShowPreviewModal(false);
+					setPreviewResult(null);
 					setTimeout(() => {
 						handleCloseEdit();
 						loadAdminMovies(adminPage, adminSearch, adminGenre);
 					}, 800);
 				} else {
 					setSaveStatus(`❌ Save failed: ${resData.message}`);
+					console.error('Save failed response:', resData);
 				}
 			})
 			.catch((err) => {
@@ -518,10 +582,16 @@ const App = () => {
 			});
 	};
 
+	const cancelPreview = () => {
+		setShowPreviewModal(false);
+		setPreviewResult(null);
+		setSaveStatus('✖️ Update canceled');
+	};
+
 	// Delete Movie
 	const handleDeleteMovie = (movieId, movieTitle) => {
 		if (!window.confirm(`Are you sure you want to delete "${movieTitle}"?`)) return;
-		fetch('/api/admin/movies/delete', {
+		fetch('https://its-time-to.watch-movie.workers.dev/api/admin/movies/delete', {
 			method: 'POST',
 			headers: { 'Content-Type': 'application/json' },
 			body: JSON.stringify({ id: movieId }),
@@ -593,8 +663,8 @@ const App = () => {
 		);
 	}
 
-	const movie = data?.movie;
-	const file = data?.file;
+	const movie = data?.movie ?? data?.model ?? data?.record ?? null;
+	const file = data?.file ?? data?.fileInfo ?? null;
 
 	// Combine DB movies and default editorial posts for the public blog grid
 	const displayedPosts =
@@ -778,6 +848,9 @@ const App = () => {
 									{adminLoginLoading ? '⏳ Verifying...' : '🔑 Unlock Admin Dashboard'}
 								</button>
 							</form>
+
+							{/* PREVIEW / CONFIRMATION MODAL */}
+							{console.log('Rendering preview modal with result:', previewResult)}
 
 							<div
 								style={{
@@ -1590,6 +1663,47 @@ const App = () => {
 					</p>
 				</div>
 			</footer>
+
+			{showPreviewModal && (
+				<div className="modal-overlay modal-open" onClick={cancelPreview} style={{ zIndex: 100000 }}>
+					<div className="modal-content" onClick={(e) => e.stopPropagation()}>
+						<div className="modal-header">
+							<h3 className="modal-title">⚠️ Confirm Propagation to Affected Entries</h3>
+							<button className="modal-close" onClick={cancelPreview}>
+								✕
+							</button>
+						</div>
+						<div style={{ padding: '1rem', maxHeight: '50vh', overflow: 'auto' }}>
+							{previewResult?.preview && previewResult.preview.length > 0 ? (
+								<ul style={{ listStyle: 'none', padding: 0 }}>
+									{previewResult.preview.map((p) => (
+										<li key={p.id} style={{ marginBottom: '0.75rem', padding: '0.5rem', borderRadius: '6px', background: '#f8fafc' }}>
+											<div style={{ fontWeight: 700 }}>Record #{p.id}</div>
+											<div style={{ marginTop: '0.25rem', fontSize: '0.9rem' }}>
+												{Object.keys(p.updates).map((k) => (
+													<div key={k}>
+														<strong>{k}:</strong> {String(p.updates[k])}
+													</div>
+												))}
+											</div>
+										</li>
+									))}
+								</ul>
+							) : (
+								<div>No other records would be changed.</div>
+							)}
+						</div>
+						<div style={{ display: 'flex', justifyContent: 'flex-end', gap: '0.75rem', padding: '1rem' }}>
+							<button className="admin-btn admin-btn-secondary" onClick={cancelPreview}>
+								Cancel
+							</button>
+							<button className="admin-btn admin-btn-primary" onClick={applyConfirmedSave}>
+								Confirm &amp; Apply
+							</button>
+						</div>
+					</div>
+				</div>
+			)}
 		</div>
 	);
 };

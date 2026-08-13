@@ -66,7 +66,7 @@ CREATE TABLE IF NOT EXISTS movies (
   country          TEXT,
   runtime          TEXT,                        -- e.g. "148 min"
   content_rating   TEXT,                        -- e.g. "PG-13"
-  imdb_id          TEXT    UNIQUE,
+  imdb_id          TEXT,
   imdb_rating      REAL,
   imdb_votes       TEXT,
   trailer_url      TEXT,
