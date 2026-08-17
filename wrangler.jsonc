@@ -16,7 +16,8 @@
 		{
 			"binding": "DB",
 			"database_name": "movie_bot",
-			"database_id": "c723091c-0cc3-49db-b9ba-dc8c074d307b",
+			"database_id": "fa4ce127-7760-4c31-a8fe-1deac9663878",
+			"remote": true,
 		},
 	],
 	"kv_namespaces": [
